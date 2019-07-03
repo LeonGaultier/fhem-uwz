@@ -44,6 +44,7 @@ package FHEM::UWZ;
 use strict;
 use feature qw/say switch/;
 use warnings;
+use POSIX;
 use GPUtils qw(GP_Import GP_Export);
 use FHEM::Meta;
 use Data::Dumper;    # Debug only
