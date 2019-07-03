@@ -2745,10 +2745,10 @@ sub UWZSearchAreaID($$) {
         attr Unwetterzentrale download 1<br>
         attr Unwetterzentrale humanreadable 1<br>
         attr Unwetterzentrale maps eastofengland unitedkingdom<br><br>
-        define UnwetterDetails weblink htmlCode {UWZAsHtml("Unwetterzentrale")}<br>
-        define UnwetterMapE_UK weblink htmlCode {UWZAsHtmlKarteLand("Unwetterzentrale","eastofengland")}<br>
-        define UnwetterLite weblink htmlCode {UWZAsHtmlLite("Unwetterzentrale")}
-        define UnwetterMovie weblink htmlCode {UWZAsHtmlMovie("Unwetterzentrale","clouds-precipitation-uk")}
+        define UnwetterDetails weblink htmlCode {FHEM::UWZ::UWZAsHtml("Unwetterzentrale")}<br>
+        define UnwetterMapE_UK weblink htmlCode {FHEM::UWZ::UWZAsHtmlKarteLand("Unwetterzentrale","eastofengland")}<br>
+        define UnwetterLite weblink htmlCode {FHEM::UWZ::UWZAsHtmlLite("Unwetterzentrale")}
+        define UnwetterMovie weblink htmlCode {FHEM::UWZ::UWZAsHtmlMovie("Unwetterzentrale","clouds-precipitation-uk")}
       </code>
       <br>&nbsp;
 
@@ -2992,13 +2992,13 @@ sub UWZSearchAreaID($$) {
       <br><br><br>
       Example:
       <br>
-      <li><code>define UnwetterDetailiert weblink htmlCode {UWZAsHtml("Unwetterzentrale")}</code></li>
+      <li><code>define UnwetterDetailiert weblink htmlCode {FHEM::UWZ::UWZAsHtml("Unwetterzentrale")}</code></li>
       <br>
-      <li><code>define UnwetterLite weblink htmlCode {UWZAsHtmlLite("Unwetterzentrale")}</code></li>
+      <li><code>define UnwetterLite weblink htmlCode {FHEM::UWZ::UWZAsHtmlLite("Unwetterzentrale")}</code></li>
       <br>
-      <li><code>define UnwetterFloorplan weblink htmlCode {UWZAsHtmlFP("Unwetterzentrale")}</code></li>
+      <li><code>define UnwetterFloorplan weblink htmlCode {FHEM::UWZ::UWZAsHtmlFP("Unwetterzentrale")}</code></li>
       <br>
-      <li><code>define UnwetterKarteLand weblink htmlCode {UWZAsHtmlKarteLand("Unwetterzentrale","Bayern")}</code></li>
+      <li><code>define UnwetterKarteLand weblink htmlCode {FHEM::UWZ::UWZAsHtmlKarteLand("Unwetterzentrale","Bayern")}</code></li>
       <ul>
         <li>The second parameter should be one of:
         <ul>
@@ -3136,7 +3136,7 @@ sub UWZSearchAreaID($$) {
         </ul>          
         </li>
       </ul>
-      <li><code>define UnwetterKarteMovie weblink htmlCode {UWZAsHtmlMovie("Unwetterzentrale","currents")}</code></li>
+      <li><code>define UnwetterKarteMovie weblink htmlCode {FHEM::UWZ::UWZAsHtmlMovie("Unwetterzentrale","currents")}</code></li>
       <ul>
         <li>The second parameter should be one of:
         <ul>
@@ -3421,13 +3421,13 @@ sub UWZSearchAreaID($$) {
       <br><br><br>
       Beispiele:
       <br>
-      <li><code>define UnwetterDetailiert weblink htmlCode {UWZAsHtml("Unwetterzentrale")}</code></li>
+      <li><code>define UnwetterDetailiert weblink htmlCode {FHEM::UWZ::UWZAsHtml("Unwetterzentrale")}</code></li>
       <br>
-      <li><code>define UnwetterLite weblink htmlCode {UWZAsHtmlLite("Unwetterzentrale")}</code></li>
+      <li><code>define UnwetterLite weblink htmlCode {FHEM::UWZ::UWZAsHtmlLite("Unwetterzentrale")}</code></li>
       <br>
-      <li><code>define UnwetterFloorplan weblink htmlCode {UWZAsHtmlFP("Unwetterzentrale")}</code></li>
+      <li><code>define UnwetterFloorplan weblink htmlCode {FHEM::UWZ::UWZAsHtmlFP("Unwetterzentrale")}</code></li>
       <br>
-      <li><code>define UnwetterKarteLand weblink htmlCode {UWZAsHtmlKarteLand("Unwetterzentrale","Bayern")}</code></li>
+      <li><code>define UnwetterKarteLand weblink htmlCode {FHEM::UWZ::UWZAsHtmlKarteLand("Unwetterzentrale","Bayern")}</code></li>
       <ul>        
         <li>Der zweite Parameter kann einer der folgenden sein:
         <ul>      
@@ -3565,7 +3565,7 @@ sub UWZSearchAreaID($$) {
         </ul>          
         </li>
       </ul>
-      <li><code>define UnwetterKarteMovie weblink htmlCode {UWZAsHtmlMovie("Unwetterzentrale","niederschlag-wolken-de")}</code></li>
+      <li><code>define UnwetterKarteMovie weblink htmlCode {FHEM::UWZ::UWZAsHtmlMovie("Unwetterzentrale","niederschlag-wolken-de")}</code></li>
       <ul>
         <li>Der zweite Parameter kann einer der folgenden sein:
         <ul>
