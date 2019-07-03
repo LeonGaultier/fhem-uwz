@@ -39,12 +39,15 @@
 # also a thanks goes to hexenmeister
 ##############################################
 
+package FHEM::UWZ;
 
-
-package main;
 use strict;
 use feature qw/say switch/;
 use warnings;
+use GPUtils qw(GP_Import GP_Export);
+use FHEM::Meta;
+use Data::Dumper;       # Debug only
+
 no if $] >= 5.017011, warnings => 'experimental::lexical_subs','experimental::smartmatch';
 
 my $missingModul;
@@ -52,7 +55,6 @@ eval "use LWP::UserAgent;1" or $missingModul .= "LWP::UserAgent ";
 eval "use LWP::Simple;1" or $missingModul .= "LWP::Simple ";
 eval "use HTTP::Request;1" or $missingModul .= "HTTP::Request ";
 eval "use HTML::Parser;1" or $missingModul .= "HTML::Parser ";
-eval "use JSON;1" or $missingModul .= "JSON ";
 eval "use Encode::Guess;1" or $missingModul .= "Encode::Guess ";
 
 require 'Blocking.pm';
@@ -60,6 +62,119 @@ require 'HttpUtils.pm';
 
 use vars qw($readingFnAttributes);
 use vars qw(%defs);
+
+# try to use JSON::MaybeXS wrapper
+#   for chance of better performance + open code
+eval {
+    require JSON::MaybeXS;
+    import JSON::MaybeXS qw( decode_json encode_json );
+    1;
+};
+
+if ($@) {
+    $@ = undef;
+
+    # try to use JSON wrapper
+    #   for chance of better performance
+    eval {
+
+        # JSON preference order
+        local $ENV{PERL_JSON_BACKEND} =
+          'Cpanel::JSON::XS,JSON::XS,JSON::PP,JSON::backportPP'
+          unless ( defined( $ENV{PERL_JSON_BACKEND} ) );
+
+        require JSON;
+        import JSON qw( decode_json encode_json );
+        1;
+    };
+
+    if ($@) {
+        $@ = undef;
+
+        # In rare cases, Cpanel::JSON::XS may
+        #   be installed but JSON|JSON::MaybeXS not ...
+        eval {
+            require Cpanel::JSON::XS;
+            import Cpanel::JSON::XS qw(decode_json encode_json);
+            1;
+        };
+
+        if ($@) {
+            $@ = undef;
+
+            # In rare cases, JSON::XS may
+            #   be installed but JSON not ...
+            eval {
+                require JSON::XS;
+                import JSON::XS qw(decode_json encode_json);
+                1;
+            };
+
+            if ($@) {
+                $@ = undef;
+
+                # Fallback to built-in JSON which SHOULD
+                #   be available since 5.014 ...
+                eval {
+                    require JSON::PP;
+                    import JSON::PP qw(decode_json encode_json);
+                    1;
+                };
+
+                if ($@) {
+                    $@ = undef;
+
+                    # Fallback to JSON::backportPP in really rare cases
+                    require JSON::backportPP;
+                    import JSON::backportPP qw(decode_json encode_json);
+                    1;
+                }
+            }
+        }
+    }
+}
+
+## Import der FHEM Funktionen
+#-- Run before package compilation
+BEGIN {
+
+    # Import from main context
+    GP_Import(
+        qw(
+          readingsSingleUpdate
+          readingsBulkUpdate
+          readingsBeginUpdate
+          readingsEndUpdate
+          defs
+          modules
+          Log3
+          CommandAttr
+          CommandDeleteReading
+          readingFnAttributes
+          AttrVal
+          ReadingsVal
+          IsDisabled
+          gettimeofday
+          InternalTimer
+          RemoveInternalTimer
+          BlockingCall
+          BlockingKill
+          init_done
+          FW_httpheader
+          deviceEvents)
+    );
+}
+
+#-- Export to main context with different name
+GP_Export(
+    qw(
+      Initialize
+      Start
+      Run
+      Aborted
+      Done
+      )
+);
 
 my @DEweekdays = qw(Sonntag Montag Dienstag Mittwoch Donnerstag Freitag Samstag);
 my @DEmonths = ( "Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember");
@@ -70,49 +185,17 @@ my @FRmonths = ("janvier","février","mars","avril","mai","juin","juillet","aoû
 my @ENweekdays = qw(sunday monday thuesday wednesday thursday friday saturday);
 my @ENmonths = ("January","February","March","April","Mäy","June","July","August","September","October","November","December");
 
-my $MODUL           = "UWZ";
-my $version         = "2.0.3";
-
-# Declare functions
-sub UWZ_Log($$$);
-sub UWZ_Map2Movie($$);
-sub UWZ_Map2Image($$);
-sub UWZ_Initialize($);
-sub UWZ_Define($$);
-sub UWZ_Undef($$);
-sub UWZ_Set($@);
-sub UWZ_Get($@);
-sub UWZ_GetCurrent($@);
-sub UWZ_GetCurrentHail($);
-sub UWZ_JSONAcquire($$);
-sub UWZ_Start($);
-sub UWZ_Aborted($);
-sub UWZ_Done($);
-sub UWZ_Run($);
-sub UWZAsHtml($;$);
-sub UWZAsHtmlLite($;$);
-sub UWZAsHtmlFP($;$);
-sub UWZAsHtmlMovie($$);
-sub UWZAsHtmlKarteLand($$);
-sub UWZ_GetSeverityColor($$);
-sub UWZ_GetUWZLevel($$);
-sub UWZSearchLatLon($$);
-sub UWZSearchAreaID($$);
-sub UWZ_IntervalAtWarnLevel($);
-
-
-
-
-my $countrycode = "DE";
-my $plz = "77777";
-my $uwz_alert_url = "http://feed.alertspro.meteogroup.com/AlertsPro/AlertsProPollService.php?method=getWarning&language=de&areaID=UWZ" . $countrycode . $plz;
+# my $countrycode = "DE";
+# my $plz = "77777";
+# my $uwz_alert_url = "http://feed.alertspro.meteogroup.com/AlertsPro/AlertsProPollService.php?method=getWarning&language=de&areaID=UWZ" . $countrycode . $plz;
 
 
 
 ########################################
-sub UWZ_Log($$$) {
+sub Log($$$) {
 
     my ( $hash, $loglevel, $text ) = @_;
+    my $MODUL       = "UWZ";
     my $xline       = ( caller(0) )[2];
 
     my $xsubroutine = ( caller(1) )[3];
@@ -124,7 +207,7 @@ sub UWZ_Log($$$) {
 }
 
 ########################################
-sub UWZ_Map2Movie($$) {
+sub Map2Movie($$) {
     my $uwz_movie_url = "http://www.meteocentrale.ch/uploads/media/";
     my ( $hash, $smap ) = @_;
     my $lmap;
@@ -168,7 +251,7 @@ sub UWZ_Map2Movie($$) {
 }
 
 ########################################
-sub UWZ_Map2Image($$) {
+sub Map2Image($$) {
 
     my $uwz_de_url = "http://www.unwetterzentrale.de/images/map/";
     my $uwz_at_url = "http://unwetter.wetteralarm.at/images/map/";
@@ -370,13 +453,14 @@ sub UWZ_Map2Image($$) {
 }
 
 ###################################
-sub UWZ_Initialize($) {
+sub Initialize($) {
 
     my ($hash) = @_;
-    $hash->{DefFn}    = "UWZ_Define";
-    $hash->{UndefFn}  = "UWZ_Undef";
-    $hash->{SetFn}    = "UWZ_Set";
-    $hash->{GetFn}    = "UWZ_Get";
+    $hash->{DefFn}    = "FHEM::UWZ::Define";
+    $hash->{UndefFn}  = "FHEM::UWZ::Undef";
+    $hash->{SetFn}    = "FHEM::UWZ::Set";
+    $hash->{NotifyFn} = "FHEM::UWZ::Notify";
+    $hash->{GetFn}    = "FHEM::UWZ::Get";
     $hash->{AttrList} = "download:0,1 ".
                         "savepath ".
                         "maps ".
@@ -391,27 +475,29 @@ sub UWZ_Initialize($) {
                         "intervalAtWarnLevel ".
                         "disable:1 ".
                         $readingFnAttributes;
-   
-    foreach my $d(sort keys %{$modules{UWZ}{defptr}}) {
-        my $hash = $modules{UWZ}{defptr}{$d};
-        $hash->{VERSION}      = $version;
-    }
+                        
+    return FHEM::Meta::InitMod( __FILE__, $hash );
 }
 
 ###################################
-sub UWZ_Define($$) {
+sub Define($$) {
 
     my ( $hash, $def ) = @_;
     my $name = $hash->{NAME};
     my $lang = "";
     my @a    = split( "[ \t][ \t]*", $def );
+    
+    return $@ unless ( FHEM::Meta::SetInternals($hash) );
+    use version 0.60; our $VERSION = FHEM::Meta::Get( $hash, 'version' );
    
     return "Error: Perl moduls ".$missingModul."are missing on this system" if( $missingModul );
     return "Wrong syntax: use define <name> UWZ <CountryCode> <PLZ> <Interval> "  if (int(@a) != 5 and  ((lc $a[2]) ne "search"));
 
+    $hash->{VERSION}    = version->parse($VERSION)->normal;
+    $hash->{NOTIFYDEV}  = 'global,' . $name;
+    
     if ((lc $a[2]) ne "search") {
-
-        $hash->{STATE}           = "Initializing";
+        readingsSingleUpdate($hash,'state','Initializing',1);
         $hash->{CountryCode}     = $a[2];
         $hash->{PLZ}             = $a[3];
         
@@ -434,39 +520,29 @@ sub UWZ_Define($$) {
         $hash->{fhem}{LOCAL}    = 0;
         $hash->{INTERVAL}       = $a[4];
         $hash->{INTERVALWARN}   = 0;
-        $hash->{VERSION}        = $version;
-       
-        RemoveInternalTimer($hash);
-       
-        #Get first data after 12 seconds
-        InternalTimer( gettimeofday() + 12, "UWZ_Start", $hash, 0 ) if ((lc $hash->{CountryCode}) ne "search");
-   
     } else {
-        $hash->{STATE}           = "Search-Mode";
+        readingsSingleUpdate($hash,'state','Search-Mode',1);
         $hash->{CountryCode}     = uc $a[2];
-        $hash->{VERSION}         = $version;
     }
-    
-    $modules{UWZ}{defptr}{$hash->{PLZ}} = $hash;
-    
+
     return undef;
 }
 
 #####################################
-sub UWZ_Undef($$) {
+sub Undef($$) {
 
     my ( $hash, $arg ) = @_;
 
     RemoveInternalTimer( $hash );
     BlockingKill( $hash->{helper}{RUNNING_PID} ) if ( defined( $hash->{helper}{RUNNING_PID} ) );
     
-    delete($modules{UWZ}{defptr}{$hash->{PLZ}});
+#     delete($modules{UWZ}{defptr}{$hash->{PLZ}});
     
     return undef;
 }
 
 #####################################
-sub UWZ_Set($@) {
+sub Set($@) {
 
     my ( $hash, @a ) = @_;
     my $name    = $hash->{NAME};
@@ -486,9 +562,9 @@ sub UWZ_Set($@) {
         
         when ("update")
         {
-            UWZ_Log $hash, 4, "set command: " . $a[1];
+            Log $hash, 4, "set command: " . $a[1];
             $hash->{fhem}{LOCAL} = 1;
-            UWZ_Start($hash);
+            Start($hash);
             $hash->{fhem}{LOCAL} = 0;
         }
         
@@ -501,7 +577,50 @@ sub UWZ_Set($@) {
     return;
 }
 
-sub UWZ_Get($@) {
+sub Notify($$) {
+
+    my ( $hash, $dev ) = @_;
+    my $name = $hash->{NAME};
+    return if ( IsDisabled($name) );
+
+    my $devname = $dev->{NAME};
+    my $devtype = $dev->{TYPE};
+    my $events  = deviceEvents( $dev, 1 );
+    return if ( !$events );
+
+    Start($hash)
+    if (
+        ((
+            (
+                grep /^DEFINED.$name$/,
+                @{$events}
+                or grep /^DELETEATTR.$name.disable$/,
+                @{$events}
+                or grep /^ATTR.$name.disable.0$/,
+                @{$events}
+            )
+            and $devname eq 'global'
+            and $init_done
+        )
+        or (
+            (
+                grep /^INITIALIZED$/,
+                @{$events}
+                or grep /^REREADCFG$/,
+                @{$events}
+                or grep /^MODIFIED.$name$/,
+                @{$events}
+            )
+            and $devname eq 'global'
+        ))
+        and ReadingsVal($name,'state','Search-Mode') ne 'Search-Mode'
+      );
+
+    return;
+}
+
+
+sub Get($@) {
 
     my ( $hash, @a ) = @_;
     my $name    = $hash->{NAME};
@@ -511,17 +630,17 @@ sub UWZ_Get($@) {
      
         return $usage if ( @a < 2 );
        
-        if    ($a[1] =~ /^Sturm/)            { UWZ_GetCurrent($hash,2); }
-        elsif ($a[1] =~ /^Schneefall/)       { UWZ_GetCurrent($hash,3); }
-        elsif ($a[1] =~ /^Regen/)            { UWZ_GetCurrent($hash,4); }
-        elsif ($a[1] =~ /^Extremfrost/)      { UWZ_GetCurrent($hash,5); }
-        elsif ($a[1] =~ /^Waldbrand/)        { UWZ_GetCurrent($hash,6); }
-        elsif ($a[1] =~ /^Gewitter/)         { UWZ_GetCurrent($hash,7); }
-        elsif ($a[1] =~ /^Glaette/)          { UWZ_GetCurrent($hash,8); }
-        elsif ($a[1] =~ /^Hitze/)            { UWZ_GetCurrent($hash,9); }
-        elsif ($a[1] =~ /^Glatteisregen/)    { UWZ_GetCurrent($hash,10); }
-        elsif ($a[1] =~ /^Bodenfrost/)       { UWZ_GetCurrent($hash,11); }
-        elsif ($a[1] =~ /^Hagel/)            { UWZ_GetCurrentHail($hash); }
+        if    ($a[1] =~ /^Sturm/)            { GetCurrent($hash,2); }
+        elsif ($a[1] =~ /^Schneefall/)       { GetCurrent($hash,3); }
+        elsif ($a[1] =~ /^Regen/)            { GetCurrent($hash,4); }
+        elsif ($a[1] =~ /^Extremfrost/)      { GetCurrent($hash,5); }
+        elsif ($a[1] =~ /^Waldbrand/)        { GetCurrent($hash,6); }
+        elsif ($a[1] =~ /^Gewitter/)         { GetCurrent($hash,7); }
+        elsif ($a[1] =~ /^Glaette/)          { GetCurrent($hash,8); }
+        elsif ($a[1] =~ /^Hitze/)            { GetCurrent($hash,9); }
+        elsif ($a[1] =~ /^Glatteisregen/)    { GetCurrent($hash,10); }
+        elsif ($a[1] =~ /^Bodenfrost/)       { GetCurrent($hash,11); }
+        elsif ($a[1] =~ /^Hagel/)            { GetCurrentHail($hash); }
         else                                 { return $usage; }
     }
 
@@ -530,17 +649,17 @@ sub UWZ_Get($@) {
 
         return $usage if ( @a < 2 );
 
-        if    ($a[1] =~/^storm/)             { UWZ_GetCurrent($hash,2); }
-        elsif ($a[1] =~/^sneeuw/)            { UWZ_GetCurrent($hash,3); }
-        elsif ($a[1] =~/^regen/)             { UWZ_GetCurrent($hash,4); }
-        elsif ($a[1] =~/^strenge-vorst/)     { UWZ_GetCurrent($hash,5); }
-        elsif ($a[1] =~/^bosbrand/)          { UWZ_GetCurrent($hash,6); }
-        elsif ($a[1] =~/^onweer/)            { UWZ_GetCurrent($hash,7); }
-        elsif ($a[1] =~/^gladheid/)          { UWZ_GetCurrent($hash,8); }
-        elsif ($a[1] =~/^hitte/)             { UWZ_GetCurrent($hash,9); }
-        elsif ($a[1] =~/^ijzel/)             { UWZ_GetCurrent($hash,10); }
-        elsif ($a[1] =~/^grondvorst/)        { UWZ_GetCurrent($hash,11); }
-        elsif ($a[1] =~/^hagel/)             { UWZ_GetCurrentHail($hash); }
+        if    ($a[1] =~/^storm/)             { GetCurrent($hash,2); }
+        elsif ($a[1] =~/^sneeuw/)            { GetCurrent($hash,3); }
+        elsif ($a[1] =~/^regen/)             { GetCurrent($hash,4); }
+        elsif ($a[1] =~/^strenge-vorst/)     { GetCurrent($hash,5); }
+        elsif ($a[1] =~/^bosbrand/)          { GetCurrent($hash,6); }
+        elsif ($a[1] =~/^onweer/)            { GetCurrent($hash,7); }
+        elsif ($a[1] =~/^gladheid/)          { GetCurrent($hash,8); }
+        elsif ($a[1] =~/^hitte/)             { GetCurrent($hash,9); }
+        elsif ($a[1] =~/^ijzel/)             { GetCurrent($hash,10); }
+        elsif ($a[1] =~/^grondvorst/)        { GetCurrent($hash,11); }
+        elsif ($a[1] =~/^hagel/)             { GetCurrentHail($hash); }
         else                                 { return $usage; }
         }
 
@@ -549,17 +668,17 @@ sub UWZ_Get($@) {
 
         return $usage if ( @a < 2 );
 
-        if    ($a[1] =~/^tempete/)           { UWZ_GetCurrent($hash,2); }
-        elsif ($a[1] =~/^neige/)             { UWZ_GetCurrent($hash,3); }
-        elsif ($a[1] =~/^pluie/)             { UWZ_GetCurrent($hash,4); }
-        elsif ($a[1] =~/^température/)       { UWZ_GetCurrent($hash,5); }
-        elsif ($a[1] =~/^feu-de-forêt/)      { UWZ_GetCurrent($hash,6); }
-        elsif ($a[1] =~/^orage/)             { UWZ_GetCurrent($hash,7); }
-        elsif ($a[1] =~/^route-glissante/)   { UWZ_GetCurrent($hash,8); }
-        elsif ($a[1] =~/^chaleur/)           { UWZ_GetCurrent($hash,9); }
-        elsif ($a[1] =~/^pluie-de-verglas/)  { UWZ_GetCurrent($hash,10); }
-        elsif ($a[1] =~/^gelée/)             { UWZ_GetCurrent($hash,11); }
-        elsif ($a[1] =~/^grêle/)             { UWZ_GetCurrentHail($hash); }
+        if    ($a[1] =~/^tempete/)           { GetCurrent($hash,2); }
+        elsif ($a[1] =~/^neige/)             { GetCurrent($hash,3); }
+        elsif ($a[1] =~/^pluie/)             { GetCurrent($hash,4); }
+        elsif ($a[1] =~/^température/)       { GetCurrent($hash,5); }
+        elsif ($a[1] =~/^feu-de-forêt/)      { GetCurrent($hash,6); }
+        elsif ($a[1] =~/^orage/)             { GetCurrent($hash,7); }
+        elsif ($a[1] =~/^route-glissante/)   { GetCurrent($hash,8); }
+        elsif ($a[1] =~/^chaleur/)           { GetCurrent($hash,9); }
+        elsif ($a[1] =~/^pluie-de-verglas/)  { GetCurrent($hash,10); }
+        elsif ($a[1] =~/^gelée/)             { GetCurrent($hash,11); }
+        elsif ($a[1] =~/^grêle/)             { GetCurrentHail($hash); }
         else                                 { return $usage; }
         }
  
@@ -577,24 +696,24 @@ sub UWZ_Get($@) {
         
         return $usage if ( @a < 2 );
     
-        if    ($a[1] =~ /^storm/)            { UWZ_GetCurrent($hash,2); }
-        elsif ($a[1] =~ /^snow/)             { UWZ_GetCurrent($hash,3); }
-        elsif ($a[1] =~ /^rain/)             { UWZ_GetCurrent($hash,4); }
-        elsif ($a[1] =~ /^extremfrost/)      { UWZ_GetCurrent($hash,5); }
-        elsif ($a[1] =~ /^forest-fire/)      { UWZ_GetCurrent($hash,6); }
-        elsif ($a[1] =~ /^thunderstorms/)    { UWZ_GetCurrent($hash,7); }
-        elsif ($a[1] =~ /^glaze/)            { UWZ_GetCurrent($hash,8); }
-        elsif ($a[1] =~ /^heat/)             { UWZ_GetCurrent($hash,9); }
-        elsif ($a[1] =~ /^glazed-rain/)      { UWZ_GetCurrent($hash,10); }
-        elsif ($a[1] =~ /^soil-frost/)       { UWZ_GetCurrent($hash,11); }
-        elsif ($a[1] =~ /^hail/)             { UWZ_GetCurrentHail($hash); }
+        if    ($a[1] =~ /^storm/)            { GetCurrent($hash,2); }
+        elsif ($a[1] =~ /^snow/)             { GetCurrent($hash,3); }
+        elsif ($a[1] =~ /^rain/)             { GetCurrent($hash,4); }
+        elsif ($a[1] =~ /^extremfrost/)      { GetCurrent($hash,5); }
+        elsif ($a[1] =~ /^forest-fire/)      { GetCurrent($hash,6); }
+        elsif ($a[1] =~ /^thunderstorms/)    { GetCurrent($hash,7); }
+        elsif ($a[1] =~ /^glaze/)            { GetCurrent($hash,8); }
+        elsif ($a[1] =~ /^heat/)             { GetCurrent($hash,9); }
+        elsif ($a[1] =~ /^glazed-rain/)      { GetCurrent($hash,10); }
+        elsif ($a[1] =~ /^soil-frost/)       { GetCurrent($hash,11); }
+        elsif ($a[1] =~ /^hail/)             { GetCurrentHail($hash); }
         else                                 { return $usage; }
 
     }
 }
 
 #####################################
-sub UWZ_GetCurrent($@) {
+sub GetCurrent($@) {
 
     my ( $hash, @a ) = @_;
     my $name         = $hash->{NAME};
@@ -617,7 +736,7 @@ sub UWZ_GetCurrent($@) {
 }
 
 #####################################
-sub UWZ_GetCurrentHail($) {
+sub GetCurrentHail($) {
 
     my ( $hash ) = @_;
     my $name         = $hash->{NAME};
@@ -641,14 +760,14 @@ sub UWZ_GetCurrentHail($) {
 }
 
 #####################################
-sub UWZ_JSONAcquire($$) {
+sub JSONAcquire($$) {
 
     my ($hash, $URL)  = @_;
     my $name    = $hash->{NAME};
     
     return unless (defined($hash->{NAME}));
  
-    UWZ_Log $hash, 4, "Start capturing of $URL";
+    Log $hash, 4, "Start capturing of $URL";
 
     my $err_log  = "";
     my $agent    = LWP::UserAgent->new( env_proxy => 1, keep_alive => 1, protocols_allowed => ['http'], timeout => 10 );
@@ -658,16 +777,16 @@ sub UWZ_JSONAcquire($$) {
      
     if ( $err_log ne "" ) {
         readingsSingleUpdate($hash, "lastConnection", $response->status_line, 1);
-        UWZ_Log $hash, 1, "Error: $err_log";
+        Log $hash, 1, "Error: $err_log";
         return "Error|Error " . $response->status_line;
     }
 
-    UWZ_Log $hash, 4, length($response->content)." characters captured";
+    Log $hash, 4, length($response->content)." characters captured";
     return $response->content;
 }
 
 #####################################
-sub UWZ_Start($) {
+sub Start($) {
 
     my ($hash) = @_;
     my $name   = $hash->{NAME};
@@ -700,7 +819,7 @@ sub UWZ_Start($) {
    
     if ( not defined( $hash->{URL} ) ) {
 
-        UWZ_Log $hash, 3, "missing URL";
+        Log $hash, 3, "missing URL";
         return;
     }
   
@@ -715,7 +834,7 @@ sub UWZ_Start($) {
 }
 
 #####################################
-sub UWZ_Aborted($) {
+sub Aborted($) {
 
     my ($hash) = @_;
     delete( $hash->{helper}{RUNNING_PID} );
@@ -723,7 +842,7 @@ sub UWZ_Aborted($) {
 
 #####################################
 # asyncronous callback by blocking
-sub UWZ_Done($) {
+sub Done($) {
 
     my ($string) = @_;
     return unless ( defined($string) );
@@ -748,12 +867,12 @@ sub UWZ_Done($) {
 
         while (my ($rName, $rValue) = each(%values) ) {
             readingsBulkUpdate( $hash, $rName, $rValue );
-            UWZ_Log $hash, 5, "reading:$rName value:$rValue";
+            Log $hash, 5, "reading:$rName value:$rValue";
         }
       
         if (keys %values > 0) {
             my $newState;
-            UWZ_Log $hash, 4, "Delete old Readings"; 
+            Log $hash, 4, "Delete old Readings"; 
             for my $Counter ($values{WarnCount} .. 9) {
                 CommandDeleteReading(undef, "$hash->{NAME} Warn_${Counter}_.*");
             }
@@ -773,12 +892,12 @@ sub UWZ_Done($) {
 
             readingsBulkUpdate($hash, "state", $newState);
             readingsBulkUpdate( $hash, "lastConnection", keys( %values )." values captured in ".$values{durationFetchReadings}." s" );
-            UWZ_Log $hash, 4, keys( %values )." values captured";
+            Log $hash, 4, keys( %values )." values captured";
             
         } else {
       
         readingsBulkUpdate( $hash, "lastConnection", "no data found" );
-        UWZ_Log $hash, 1, "No data found. Check city name or URL.";
+        Log $hash, 1, "No data found. Check city name or URL.";
         
         }
     }
@@ -787,13 +906,13 @@ sub UWZ_Done($) {
     
     if( AttrVal($name,'intervalAtWarnLevel','') ne '' and ReadingsVal($name,'WarnUWZLevel',0) > 1 ) {
     
-        UWZ_IntervalAtWarnLevel($hash);
-        UWZ_Log $hash, 5, "run Sub IntervalAtWarnLevel"; 
+        IntervalAtWarnLevel($hash);
+        Log $hash, 5, "run Sub IntervalAtWarnLevel"; 
     }
 }
 
 #####################################
-sub UWZ_Run($) {
+sub Run($) {
 
     my ($name) = @_;
     my $ptext=$name;
@@ -844,50 +963,50 @@ sub UWZ_Run($) {
 
     if ( $UWZ_download == 1 ) {
         if ( ! defined($maps2fetch) ) { $maps2fetch = "deutschland"; }
-            UWZ_Log $hash, 4, "Maps2Fetch : ".$maps2fetch;
+            Log $hash, 4, "Maps2Fetch : ".$maps2fetch;
             my @maps = split(' ', $maps2fetch);
             my $uwz_de_url = "http://www.unwetterzentrale.de/images/map/";
             
             foreach my $smap (@maps) {
-                UWZ_Log $hash, 4, "Download map : ".$smap;
-                my $img = UWZ_Map2Image($hash,$smap);
+                Log $hash, 4, "Download map : ".$smap;
+                my $img = Map2Image($hash,$smap);
                 
                 if (!defined($img) ) { $img=$uwz_de_url.'deutschland_index.png'; }
                     my $code = getstore($img, $UWZ_savepath.$smap.".png");
                     
                     if($code == 200) {
-                        UWZ_Log $hash, 4, "Successfully downloaded map ".$smap;
+                        Log $hash, 4, "Successfully downloaded map ".$smap;
                         
                     } else {
                     
-                UWZ_Log $hash, 3, "Failed to download map (".$img.")";
+                Log $hash, 3, "Failed to download map (".$img.")";
             }
         } 
 
     }
 
     # acquire the json-response
-    my $response = UWZ_JSONAcquire($hash,$hash->{URL}); 
+    my $response = JSONAcquire($hash,$hash->{URL}); 
 
-    UWZ_Log $hash, 5, length($response)." characters captured";
+    Log $hash, 5, length($response)." characters captured";
     my $uwz_warnings = JSON->new->ascii->decode($response);
     my $enc = guess_encoding($uwz_warnings);
 
     my $uwz_warncount = scalar(@{ $uwz_warnings->{'results'} });
-    UWZ_Log $hash, 4, "There are ".$uwz_warncount." warnings active";
+    Log $hash, 4, "There are ".$uwz_warncount." warnings active";
     my $sortby = AttrVal( $name, 'sort_readings_by',"" );
     my @sorted;
     
     if ( $sortby eq "creation" ) {
-        UWZ_Log $hash, 4, "Sorting by creation";
+        Log $hash, 4, "Sorting by creation";
         @sorted =  sort { $b->{payload}{creation} <=> $a->{payload}{creation} } @{ $uwz_warnings->{'results'} };
     
     } elsif ( $sortby ne "severity" ) {
-        UWZ_Log $hash, 4, "Sorting by dtgStart";
+        Log $hash, 4, "Sorting by dtgStart";
         @sorted =  sort { $a->{dtgStart} <=> $b->{dtgStart} } @{ $uwz_warnings->{'results'} };
         
     } else {
-        UWZ_Log $hash, 4, "Sorting by severity";
+        Log $hash, 4, "Sorting by severity";
         @sorted =  sort { $a->{severity} <=> $b->{severity} } @{ $uwz_warnings->{'results'} };
     }
 
@@ -971,60 +1090,60 @@ sub UWZ_Run($) {
     my @uwzmaxlevel;
     foreach my $single_warning (@sorted) {
 
-        push @uwzmaxlevel, UWZ_GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'});
+        push @uwzmaxlevel, GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'});
 
-        UWZ_Log $hash, 4, "Warn_".$i."_EventID: ".$single_warning->{'payload'}{'id'};
+        Log $hash, 4, "Warn_".$i."_EventID: ".$single_warning->{'payload'}{'id'};
         $message .= "Warn_".$i."_EventID|".$single_warning->{'payload'}{'id'}."|";
 
 
         my $chopcreation = substr($single_warning->{'payload'}{'creation'},0,10);
         $chopcreation = $chopcreation;
 
-        UWZ_Log $hash, 4, "Warn_".$i."_Creation: ".$chopcreation; 
+        Log $hash, 4, "Warn_".$i."_Creation: ".$chopcreation; 
         $message .= "Warn_".$i."_Creation|".$chopcreation."|"; 
 
 
-        UWZ_Log $hash, 4, "Warn_".$i."_Type: ".$single_warning->{'type'};
+        Log $hash, 4, "Warn_".$i."_Type: ".$single_warning->{'type'};
         $message .= "Warn_".$i."_Type|".$single_warning->{'type'}."|";
         
-        UWZ_Log $hash, 4, "Warn_".$i."_uwzLevel: ".UWZ_GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'});
-        $message .= "Warn_".$i."_uwzLevel|".UWZ_GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'})."|";
+        Log $hash, 4, "Warn_".$i."_uwzLevel: ".GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'});
+        $message .= "Warn_".$i."_uwzLevel|".GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'})."|";
 
-        UWZ_Log $hash, 4, "Warn_".$i."_Severity: ".$single_warning->{'severity'};
+        Log $hash, 4, "Warn_".$i."_Severity: ".$single_warning->{'severity'};
         $message .= "Warn_".$i."_Severity|".$single_warning->{'severity'}."|";
         
-        UWZ_Log $hash, 4, "Warn_".$i."_Start: ".$single_warning->{'dtgStart'};
+        Log $hash, 4, "Warn_".$i."_Start: ".$single_warning->{'dtgStart'};
         $message .= "Warn_".$i."_Start|".$single_warning->{'dtgStart'}."|";
         
-        UWZ_Log $hash, 4, "Warn_".$i."_End: ".$single_warning->{'dtgEnd'};
+        Log $hash, 4, "Warn_".$i."_End: ".$single_warning->{'dtgEnd'};
         $message .= "Warn_".$i."_End|".$single_warning->{'dtgEnd'}."|";
 
         ## Begin of redundant Reading
         if ( $UWZ_humanreadable eq 1 ) {
-            UWZ_Log $hash, 4, "Warn_".$i."_Start_Date: ".strftime("%d.%m.%Y", localtime($single_warning->{'dtgStart'}));
+            Log $hash, 4, "Warn_".$i."_Start_Date: ".strftime("%d.%m.%Y", localtime($single_warning->{'dtgStart'}));
             $message .= "Warn_".$i."_Start_Date|".strftime("%d.%m.%Y", localtime($single_warning->{'dtgStart'}))."|";
             
-            UWZ_Log $hash, 4, "Warn_".$i."_Start_Time: ".strftime("%H:%M", localtime($single_warning->{'dtgStart'}));
+            Log $hash, 4, "Warn_".$i."_Start_Time: ".strftime("%H:%M", localtime($single_warning->{'dtgStart'}));
             $message .= "Warn_".$i."_Start_Time|".strftime("%H:%M", localtime($single_warning->{'dtgStart'}))."|";
             
-            UWZ_Log $hash, 4, "Warn_".$i."_End_Date: ".strftime("%d.%m.%Y", localtime($single_warning->{'dtgEnd'}));
+            Log $hash, 4, "Warn_".$i."_End_Date: ".strftime("%d.%m.%Y", localtime($single_warning->{'dtgEnd'}));
             $message .= "Warn_".$i."_End_Date|".strftime("%d.%m.%Y", localtime($single_warning->{'dtgEnd'}))."|";
             
-            UWZ_Log $hash, 4, "Warn_".$i."_End_Time: ".strftime("%H:%M", localtime($single_warning->{'dtgEnd'}));
+            Log $hash, 4, "Warn_".$i."_End_Time: ".strftime("%H:%M", localtime($single_warning->{'dtgEnd'}));
             $message .= "Warn_".$i."_End_Time|".strftime("%H:%M", localtime($single_warning->{'dtgEnd'}))."|";
 
 
-            UWZ_Log $hash, 4, "Warn_".$i."_Creation_Date: ".strftime("%d.%m.%Y", localtime($chopcreation));
+            Log $hash, 4, "Warn_".$i."_Creation_Date: ".strftime("%d.%m.%Y", localtime($chopcreation));
             $message .= "Warn_".$i."_Creation_Date|".strftime("%d.%m.%Y", localtime($chopcreation))."|";
 
-            UWZ_Log $hash, 4, "Warn_".$i."_Creation_Time: ".strftime("%H:%M", localtime($chopcreation));
+            Log $hash, 4, "Warn_".$i."_Creation_Time: ".strftime("%H:%M", localtime($chopcreation));
             $message .= "Warn_".$i."_Creation_Time|".strftime("%H:%M", localtime($chopcreation))."|";
 
    
 
             # Begin Language by AttrVal
             if ( $hash->{CountryCode} ~~ [ 'DE', 'AT', 'CH' ] ) {
-                UWZ_Log $hash, 4, "Warn_".$i."_Type_Str: ".$typenames_de_str{ $single_warning->{'type'} };
+                Log $hash, 4, "Warn_".$i."_Type_Str: ".$typenames_de_str{ $single_warning->{'type'} };
                 $message .= "Warn_".$i."_Type_Str|".$typenames_de_str{ $single_warning->{'type'} }."|";
                 my %uwzlevelname = ( "0" => "Stufe Grün (keine Warnung)",
                                      "1" => "Stufe Dunkelgrün (Wetterhinweise)",
@@ -1032,11 +1151,11 @@ sub UWZ_Run($) {
                                      "3" => "Warnstufe Orange (Unwetterwarnung)",
                                      "4" => "Warnstufe Rot (Unwetterwarnung)",
                                      "5" => "Warnstufe Violett (Unwetterwarnung)");
-                UWZ_Log $hash, 4, "Warn_".$i."_uwzLevel_Str: ".$uwzlevelname{ UWZ_GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'}) };
-                $message .= "Warn_".$i."_uwzLevel_Str|".$uwzlevelname{ UWZ_GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'}) }."|";
+                Log $hash, 4, "Warn_".$i."_uwzLevel_Str: ".$uwzlevelname{ GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'}) };
+                $message .= "Warn_".$i."_uwzLevel_Str|".$uwzlevelname{ GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'}) }."|";
 
             } elsif ( $hash->{CountryCode} ~~ [ 'NL' ] ) {
-                UWZ_Log $hash, 4, "Warn_".$i."_Type_Str: ".$typenames_nl_str{ $single_warning->{'type'} };
+                Log $hash, 4, "Warn_".$i."_Type_Str: ".$typenames_nl_str{ $single_warning->{'type'} };
                 $message .= "Warn_".$i."_Type_Str|".$typenames_nl_str{ $single_warning->{'type'} }."|";
                 my %uwzlevelname = ( "0" => "niveau groen (geen waarschuwingen)",
                                      "1" => "niveau donkergroen (weermelding)",
@@ -1044,11 +1163,11 @@ sub UWZ_Run($) {
                                      "3" => "waarschuwingsniveau oranje (waarschuwing voor matig noodweer)",
                                      "4" => "waarschuwingsniveau rood (waarschuwing voor zwaar noodweer)",
                                      "5" => "waarschuwingsniveau violet (waarschuwing voor zeer zwaar noodweer)");
-                UWZ_Log $hash, 4, "Warn_".$i."_uwzLevel_Str: ".$uwzlevelname{ UWZ_GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'}) };
-                $message .= "Warn_".$i."_uwzLevel_Str|".$uwzlevelname{ UWZ_GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'}) }."|";
+                Log $hash, 4, "Warn_".$i."_uwzLevel_Str: ".$uwzlevelname{ GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'}) };
+                $message .= "Warn_".$i."_uwzLevel_Str|".$uwzlevelname{ GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'}) }."|";
 
             } elsif ( $hash->{CountryCode} ~~ [ 'FR' ] ) {
-                UWZ_Log $hash, 4, "Warn_".$i."_Type_Str: ".$typenames_nl_str{ $single_warning->{'type'} };
+                Log $hash, 4, "Warn_".$i."_Type_Str: ".$typenames_nl_str{ $single_warning->{'type'} };
                 $message .= "Warn_".$i."_Type_Str|".$typenames_nl_str{ $single_warning->{'type'} }."|";
                 my %uwzlevelname = ( "0" => "niveau vert (aucune alerte)",
                                      "1" => "niveau vert foncé (indication météo)",
@@ -1056,11 +1175,11 @@ sub UWZ_Run($) {
                                      "3" => "niveau d' alerte orange (alerte météo)",
                                      "4" => "niveau d' alerte rouge (alerte météo)",
                                      "5" => "niveau d' alerte violet (alerte météo)");
-                UWZ_Log $hash, 4, "Warn_".$i."_uwzLevel_Str: ".$uwzlevelname{ UWZ_GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'}) };
-                $message .= "Warn_".$i."_uwzLevel_Str|".$uwzlevelname{ UWZ_GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'}) }."|";
+                Log $hash, 4, "Warn_".$i."_uwzLevel_Str: ".$uwzlevelname{ GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'}) };
+                $message .= "Warn_".$i."_uwzLevel_Str|".$uwzlevelname{ GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'}) }."|";
 
             } else {
-                UWZ_Log $hash, 4, "Warn_".$i."_Type_Str: ".$typenames_en_str{ $single_warning->{'type'} };
+                Log $hash, 4, "Warn_".$i."_Type_Str: ".$typenames_en_str{ $single_warning->{'type'} };
                 $message .= "Warn_".$i."_Type_Str|".$typenames_en_str{ $single_warning->{'type'} }."|";
                 my %uwzlevelname = ( "0" => "level green (no warnings)",
                                      "1" => "level dark green (weather notice)",
@@ -1068,22 +1187,22 @@ sub UWZ_Run($) {
                                      "3" => "Alert level Orange",
                                      "4" => "Alert level Red",
                                      "5" => "Alert level Violet");
-                UWZ_Log $hash, 4, "Warn_".$i."_uwzLevel_Str: ".$uwzlevelname{ UWZ_GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'}) };
-                $message .= "Warn_".$i."_uwzLevel_Str|".$uwzlevelname{ UWZ_GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'}) }."|";
+                Log $hash, 4, "Warn_".$i."_uwzLevel_Str: ".$uwzlevelname{ GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'}) };
+                $message .= "Warn_".$i."_uwzLevel_Str|".$uwzlevelname{ GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'}) }."|";
 
             }
 
         }
         ## End of redundant Reading
         
-        UWZ_Log $hash, 4, "Warn_".$i."_levelName: ".$single_warning->{'payload'}{'levelName'};
+        Log $hash, 4, "Warn_".$i."_levelName: ".$single_warning->{'payload'}{'levelName'};
         $message .= "Warn_".$i."_levelName|".$single_warning->{'payload'}{'levelName'}."|";
         
-        UWZ_Log $hash, 4, "Warn_".$i."_AltitudeMin: ".$enc->decode($single_warning->{'payload'}{'altMin'});
+        Log $hash, 4, "Warn_".$i."_AltitudeMin: ".$enc->decode($single_warning->{'payload'}{'altMin'});
     
         $message .= "Warn_".$i."_AltitudeMin|".encode("UTF-8", decode("iso-8859-1", $single_warning->{'payload'}{'altMin'}))."|";
 
-        UWZ_Log $hash, 4, "Warn_".$i."_AltitudeMax: ".$enc->decode($single_warning->{'payload'}{'altMax'});
+        Log $hash, 4, "Warn_".$i."_AltitudeMax: ".$enc->decode($single_warning->{'payload'}{'altMax'});
 
         $message .= "Warn_".$i."_AltitudeMax|".encode("UTF-8", decode("iso-8859-1", $single_warning->{'payload'}{'altMax'}))."|";
 
@@ -1102,22 +1221,22 @@ sub UWZ_Run($) {
                 $uclang = "EN";
             }
         }
-        UWZ_Log $hash, 4, "Warn_".$i."_LongText: ".$enc->decode($single_warning->{'payload'}{'translationsLongText'}{$uclang});
+        Log $hash, 4, "Warn_".$i."_LongText: ".$enc->decode($single_warning->{'payload'}{'translationsLongText'}{$uclang});
 
         $message .= "Warn_".$i."_LongText|".encode("UTF-8", decode("iso-8859-1", $single_warning->{'payload'}{'translationsLongText'}{$uclang}))."|";
             
-        UWZ_Log $hash, 4, "Warn_".$i."_ShortText: ".$enc->decode($single_warning->{'payload'}{'translationsShortText'}{$uclang});
+        Log $hash, 4, "Warn_".$i."_ShortText: ".$enc->decode($single_warning->{'payload'}{'translationsShortText'}{$uclang});
 
         $message .= "Warn_".$i."_ShortText|".encode("UTF-8", decode("iso-8859-1", $single_warning->{'payload'}{'translationsShortText'}{$uclang}))."|";
 
 ###
         if (AttrVal( $name, 'localiconbase',undef) ) {
-            UWZ_Log $hash, 4, "Warn_".$i."_IconURL: ".AttrVal( $name, 'localiconbase',undef).$typenames{ $single_warning->{'type'} }."-".$single_warning->{'severity'}.".png";
-            $message .= "Warn_".$i."_IconURL|".AttrVal( $name, 'localiconbase',undef).$typenames{ $single_warning->{'type'} }."-".UWZ_GetSeverityColor($hash, UWZ_GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'} )).".png|";
+            Log $hash, 4, "Warn_".$i."_IconURL: ".AttrVal( $name, 'localiconbase',undef).$typenames{ $single_warning->{'type'} }."-".$single_warning->{'severity'}.".png";
+            $message .= "Warn_".$i."_IconURL|".AttrVal( $name, 'localiconbase',undef).$typenames{ $single_warning->{'type'} }."-".GetSeverityColor($hash, GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'} )).".png|";
 
         } else {
-            UWZ_Log $hash, 4, "Warn_".$i."_IconURL: http://www.unwetterzentrale.de/images/icons/".$typenames{ $single_warning->{'type'} }."-".$single_warning->{'severity'}.".gif";
-            $message .= "Warn_".$i."_IconURL|http://www.unwetterzentrale.de/images/icons/".$typenames{ $single_warning->{'type'} }."-".UWZ_GetSeverityColor($hash, UWZ_GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'} )).".gif|";
+            Log $hash, 4, "Warn_".$i."_IconURL: http://www.unwetterzentrale.de/images/icons/".$typenames{ $single_warning->{'type'} }."-".$single_warning->{'severity'}.".gif";
+            $message .= "Warn_".$i."_IconURL|http://www.unwetterzentrale.de/images/icons/".$typenames{ $single_warning->{'type'} }."-".GetSeverityColor($hash, GetUWZLevel($hash,$single_warning->{'payload'}{'levelName'} )).".gif|";
         }
 ###
 
@@ -1145,12 +1264,12 @@ sub UWZ_Run($) {
         # end language by AttrVal
         if ( $hagelcount ne 0 ) {
             
-            UWZ_Log $hash, 4, "Warn_".$i."_Hail: 1";
+            Log $hash, 4, "Warn_".$i."_Hail: 1";
             $message .= "Warn_".$i."_Hail|1|";
                 
         } else {
             
-            UWZ_Log $hash, 4, "Warn_".$i."_Hail: 0";
+            Log $hash, 4, "Warn_".$i."_Hail: 0";
             $message .= "Warn_".$i."_Hail|0|";
         }
         ## Hagel end
@@ -1166,8 +1285,8 @@ sub UWZ_Run($) {
     $message .= "WarnUWZLevel|";
     $message .= $max."|";
 
-    UWZ_Log $hash, 4, "WarnUWZLevel_Color: ".UWZ_GetSeverityColor($hash, $max);
-    $message .= "WarnUWZLevel_Color|".UWZ_GetSeverityColor($hash, $max)."|";
+    Log $hash, 4, "WarnUWZLevel_Color: ".GetSeverityColor($hash, $max);
+    $message .= "WarnUWZLevel_Color|".GetSeverityColor($hash, $max)."|";
 
     ## Begin of redundant Reading
     if ( $UWZ_humanreadable eq 1 ) {
@@ -1178,7 +1297,7 @@ sub UWZ_Run($) {
                                  "3" => "Warnstufe Orange (Unwetterwarnung)",
                                  "4" => "Warnstufe Rot (Unwetterwarnung)",
                                  "5" => "Warnstufe Violett (Unwetterwarnung)");
-            UWZ_Log $hash, 4, "WarnUWZLevel_Str: ".$uwzlevelname{ $max };
+            Log $hash, 4, "WarnUWZLevel_Str: ".$uwzlevelname{ $max };
             $message .= "WarnUWZLevel_Str|".$uwzlevelname{ $max }."|";
 
         } elsif ($hash->{CountryCode} ~~ [ 'NL' ] ) {
@@ -1188,7 +1307,7 @@ sub UWZ_Run($) {
                                  "3" => "waarschuwingsniveau oranje (waarschuwing voor matig noodweer)",
                                  "4" => "waarschuwingsniveau rood (waarschuwing voor zwaar noodweer)",
                                  "5" => "waarschuwingsniveau violet (waarschuwing voor zeer zwaar noodweer)");
-            UWZ_Log $hash, 4, "WarnUWZLevel_Str: ".$uwzlevelname{ $max };
+            Log $hash, 4, "WarnUWZLevel_Str: ".$uwzlevelname{ $max };
             $message .= "WarnUWZLevel_Str|".$uwzlevelname{ $max }."|";
 
         } elsif ($hash->{CountryCode} ~~ [ 'FR' ] ) {
@@ -1198,7 +1317,7 @@ sub UWZ_Run($) {
                                  "3" => "niveau d' alerte orange (alerte météo)",
                                  "4" => "niveau d' alerte rouge (alerte météo)",
                                  "5" => "niveau d' alerte violet (alerte météo)");
-            UWZ_Log $hash, 4, "WarnUWZLevel_Str: ".$uwzlevelname{ $max };
+            Log $hash, 4, "WarnUWZLevel_Str: ".$uwzlevelname{ $max };
             $message .= "WarnUWZLevel_Str|".$uwzlevelname{ $max }."|";
 
         } else {
@@ -1208,7 +1327,7 @@ sub UWZ_Run($) {
                                  "3" => "Alert level Orange",
                                  "4" => "Alert level Red",
                                  "5" => "Alert level Violet");
-            UWZ_Log $hash, 4, "WarnUWZLevel_Str: ".$uwzlevelname{ $max };
+            Log $hash, 4, "WarnUWZLevel_Str: ".$uwzlevelname{ $max };
             $message .= "WarnUWZLevel_Str|".$uwzlevelname{ $max }."|";
         }
     }
@@ -1216,8 +1335,8 @@ sub UWZ_Run($) {
     $message .= "durationFetchReadings|";
     $message .= sprintf "%.2f",  time() - $readingStartTime;
     
-    UWZ_Log $hash, 3, "Done fetching data";
-    UWZ_Log $hash, 4, "Will return : "."$name|$message|WarnCount|$uwz_warncount" ;
+    Log $hash, 3, "Done fetching data";
+    Log $hash, 4, "Will return : "."$name|$message|WarnCount|$uwz_warncount" ;
     
     return "$name|$message|WarnCount|$uwz_warncount" ;
 }
@@ -1525,7 +1644,7 @@ sub UWZAsHtmlFP($;$) {
 sub UWZAsHtmlMovie($$) {
 
     my ($name,$land) = @_;
-    my $url = UWZ_Map2Movie($name,$land);
+    my $url = Map2Movie($name,$land);
     my $hash = $defs{$name};
 
     my $ret = '<table><tr><td>';
@@ -1562,7 +1681,7 @@ sub UWZAsHtmlMovie($$) {
 sub UWZAsHtmlKarteLand($$) {
 
     my ($name,$land) = @_;
-    my $url = UWZ_Map2Image($name,$land);
+    my $url = Map2Image($name,$land);
     my $hash = $defs{$name};
 
     my $ret = '<table><tr><td>';
@@ -1594,7 +1713,7 @@ sub UWZAsHtmlKarteLand($$) {
 }
 
 #####################################
-sub UWZ_GetSeverityColor($$) {
+sub GetSeverityColor($$) {
     my ($name,$uwzlevel) = @_;
     my $alertcolor       = "";
 
@@ -1609,7 +1728,7 @@ sub UWZ_GetSeverityColor($$) {
 }
 
 #####################################
-sub UWZ_GetUWZLevel($$) {
+sub GetUWZLevel($$) {
     my ($name,$warnname) = @_;
     my @alert            = split(/_/,$warnname);
 
@@ -1630,7 +1749,7 @@ sub UWZ_GetUWZLevel($$) {
 }
 
 #####################################
-sub UWZ_IntervalAtWarnLevel($) {
+sub IntervalAtWarnLevel($) {
 
     my $hash        = shift;
     
@@ -1655,14 +1774,14 @@ sub UWZ_IntervalAtWarnLevel($) {
         RemoveInternalTimer( $hash );
         InternalTimer(gettimeofday() + $hash->{INTERVALWARN}, "UWZ_Start", $hash, 1 );
         
-        UWZ_Log $hash, 4, "restart internal timer with interval $hash->{INTERVALWARN}";
+        Log $hash, 4, "restart internal timer with interval $hash->{INTERVALWARN}";
         
     } else {
         
         RemoveInternalTimer( $hash );
         InternalTimer(gettimeofday() + $hash->{INTERVALWARN}, "UWZ_Start", $hash, 1 );
         
-        UWZ_Log $hash, 4, "restart internal timer with interval $hash->{INTERVALWARN}";
+        Log $hash, 4, "restart internal timer with interval $hash->{INTERVALWARN}";
     }
 }
 
@@ -1673,25 +1792,24 @@ sub UWZ_IntervalAtWarnLevel($) {
 #####################################
 
 sub UWZSearchLatLon($$) {
-
     my ($name,$loc)    = @_;
-    my $url      = "http://alertspro.geoservice.meteogroup.de/weatherpro/SearchFeed.php?search=".$loc;
 
+    my $err_log = '';
+    my $url      = "http://alertspro.geoservice.meteogroup.de/weatherpro/SearchFeed.php?search=".$loc;
     my $agent    = LWP::UserAgent->new( env_proxy => 1, keep_alive => 1, protocols_allowed => ['http'], timeout => 10 );
     my $request  = HTTP::Request->new( GET => $url );
     my $response = $agent->request($request);
-    my $err_log  = "Can't get $url -- " . $response->status_line unless( $response->is_success );
+    $err_log  = 'Can\'t get ' . $url . ' -- ' . $response->status_line
+      unless( $response->is_success );
 
     if ( $err_log ne "" ) {
         print "Error|Error " . $response->status_line;
     }
     
     use XML::Simple qw(:strict);
-    use Data::Dumper;
     use Encode qw(decode encode);
 
     my $uwzxmlparser = XML::Simple->new();
-    #my $xmlres = $parser->XMLin(
     my $search = $uwzxmlparser->XMLin($response->content, KeyAttr => { city => 'id' }, ForceArray => [ 'city' ]);
 
     my $ret = '<html><table><tr><td>';
@@ -1722,7 +1840,7 @@ sub UWZSearchLatLon($$) {
                 my @headerHost = grep /Host/, @FW_httpheader;
                 $headerHost[0] =~ s/Host: //g; 
  
-                my $aHref="<a href=\"http://".$headerHost[0]."/fhem?cmd=get+".$name."+AreaID+".$value->{'latitude'}.",".$value->{'longitude'}."\">Get AreaID</a>";
+                my $aHref="<a href=\"http://".$headerHost[0]."/fhem?cmd=get+".$name."+AreaID+".$value->{'latitude'}.",".$value->{'longitude'}.$::FW_CSRF."\">Get AreaID</a>";
                 $ret .= "<td>".$aHref."</td>";
                 $ret .= '</tr>';
                 $linecount++;
@@ -1739,12 +1857,14 @@ sub UWZSearchLatLon($$) {
 #####################################
 sub UWZSearchAreaID($$) {
     my ($lat,$lon) = @_;
-    my $url = "http://feed.alertspro.meteogroup.com/AlertsPro/AlertsProPollService.php?method=lookupCoord&lat=".$lat."&lon=".$lon;
     
+    my $err_log = '';
+    my $url = "http://feed.alertspro.meteogroup.com/AlertsPro/AlertsProPollService.php?method=lookupCoord&lat=".$lat."&lon=".$lon;
     my $agent    = LWP::UserAgent->new( env_proxy => 1, keep_alive => 1, protocols_allowed => ['http'], timeout => 10 );
     my $request   = HTTP::Request->new( GET => $url );
     my $response = $agent->request($request);
-    my $err_log = "Can't get $url -- " . $response->status_line unless( $response->is_success );
+    $err_log = "Can't get $url -- " . $response->status_line
+      unless( $response->is_success );
 
     if ( $err_log ne "" ) {
         print "Error|Error " . $response->status_line;
@@ -2686,4 +2806,50 @@ sub UWZSearchAreaID($$) {
 </ul>
 
 =end html_DE
+
+=for :application/json;q=META.json 77_UWZ.pm
+{
+  "abstract": "Module to extracts thunderstorm warnings from unwetterzentrale.de",
+  "x_lang": {
+    "de": {
+      "abstract": "Modul zum anzeigen von Unwetterwarnungen von unwetterzentrale.de"
+    }
+  },
+  "keywords": [
+    "fhem-mod-device",
+    "fhem-core",
+    "Unwetter",
+    "Wetter",
+    "Warnungen"
+  ],
+  "release_status": "stable",
+  "license": "GPL_2",
+  "version": "v2.2.0",
+  "author": [
+    "Marko Oldenburg <leongaultier@gmail.com>"
+  ],
+  "x_fhem_maintainer": [
+    "CoolTux"
+  ],
+  "x_fhem_maintainer_github": [
+    "LeonGaultier"
+  ],
+  "prereqs": {
+    "runtime": {
+      "requires": {
+        "FHEM": 5.00918799,
+        "perl": 5.016, 
+        "Meta": 0,
+        "JSON": 0,
+        "Date::Parse": 0
+      },
+      "recommends": {
+      },
+      "suggests": {
+      }
+    }
+  }
+}
+=end :application/json;q=META.json
+
 =cut
