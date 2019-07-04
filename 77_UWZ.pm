@@ -3,6 +3,7 @@
 #  77_UWZ.pm
 #
 #  (c) 2015-2016 Tobias D. Oestreicher
+#  (c) 2017-2019 Marko Oldenburg
 #
 #  Special thanks goes to comitters:
 #       - Marko Oldenburg (leongaultier at gmail dot com)
