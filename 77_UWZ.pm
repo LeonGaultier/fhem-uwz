@@ -166,6 +166,7 @@ BEGIN {
           BlockingKill
           init_done
           FW_httpheader
+          HttpUtils_BlockingGet
           deviceEvents)
     );
 }
@@ -844,27 +845,25 @@ sub JSONAcquire($$) {
 
     Log $hash, 4, "Start capturing of $URL";
 
-    my $err_log = "";
-    my $agent   = LWP::UserAgent->new(
-        env_proxy         => 1,
-        keep_alive        => 1,
-        protocols_allowed => ['http'],
-        timeout           => 10
-    );
-    my $request = HTTP::Request->new( GET => $URL );
-    my $response = $agent->request($request);
-    $err_log = "Can't get $URL -- " . $response->status_line
-      unless ( $response->is_success );
+    my $param = {
+        url     => "$URL",
+        timeout => 5,
+        hash    => $hash,
+        method  => "GET",
+        header  => "",
+    };
 
-    if ( $err_log ne "" ) {
-        readingsSingleUpdate( $hash, "lastConnection", $response->status_line,
-            1 );
+    my ( $err, $data ) = HttpUtils_BlockingGet($param);
+
+    if ( $err ne "" ) {
+        my $err_log = "Can't get $URL -- " . $err;
+        readingsSingleUpdate( $hash, "lastConnection", $err, 1 );
         Log $hash, 1, "Error: $err_log";
-        return "Error|Error " . $response->status_line;
+        return "Error|Error " . $err;
     }
 
-    Log $hash, 4, length( $response->content ) . " characters captured";
-    return $response->content;
+    Log $hash, 4, length($data) . " characters captured:  $data";
+    return $data;
 }
 
 #####################################
@@ -3624,7 +3623,7 @@ sub UWZSearchAreaID($$) {
   ],
   "release_status": "stable",
   "license": "GPL_2",
-  "version": "v2.2.0",
+  "version": "v2.2.1",
   "author": [
     "Marko Oldenburg <leongaultier@gmail.com>"
   ],
