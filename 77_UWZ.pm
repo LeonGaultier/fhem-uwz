@@ -879,7 +879,7 @@ sub Start($) {
 
         RemoveInternalTimer($hash);
         InternalTimer( gettimeofday() + $hash->{INTERVAL},
-            "UWZ_Start", $hash, 1 );
+            "UWZ_Start", $hash );
         return undef if ( IsDisabled($name) );
         readingsSingleUpdate( $hash, 'currentIntervalMode', 'normal', 0 );
     }
@@ -2541,7 +2541,7 @@ sub IntervalAtWarnLevel($) {
 
         RemoveInternalTimer($hash);
         InternalTimer( gettimeofday() + $hash->{INTERVALWARN},
-            "UWZ_Start", $hash, 1 );
+            "UWZ_Start", $hash );
 
         Log $hash, 4,
           "restart internal timer with interval $hash->{INTERVALWARN}";
@@ -2551,7 +2551,7 @@ sub IntervalAtWarnLevel($) {
 
         RemoveInternalTimer($hash);
         InternalTimer( gettimeofday() + $hash->{INTERVALWARN},
-            "UWZ_Start", $hash, 1 );
+            "UWZ_Start", $hash );
 
         Log $hash, 4,
           "restart internal timer with interval $hash->{INTERVALWARN}";
@@ -3623,7 +3623,7 @@ sub UWZSearchAreaID($$) {
   ],
   "release_status": "stable",
   "license": "GPL_2",
-  "version": "v2.2.1",
+  "version": "v2.2.2",
   "author": [
     "Marko Oldenburg <leongaultier@gmail.com>"
   ],
