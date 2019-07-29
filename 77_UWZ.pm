@@ -2044,7 +2044,7 @@ sub UWZAsHtmlKarteLand($$) {
 }
 
 #####################################
-sub UWZHtmlFrame($$$) {
+sub UWZHtmlFrame($@) {
     my ( $hash, $readingStart, $attr, $parm ) = @_;
 
     my $ret  = "";
