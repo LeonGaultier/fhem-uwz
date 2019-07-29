@@ -9,6 +9,7 @@
 #       - Marko Oldenburg (leongaultier at gmail dot com)
 #       - Hanjo (Forum) patch for sort by creation
 #       - cb1 <kontakt@it-buchinger.de> patch Replace Iconv with native perl encode()
+#       - KölnSolar (Markus) new write UWZAsHtml with smaler Code
 #
 #  Storm warnings from unwetterzentrale.de
 #  inspired by 59_PROPLANTA.pm
@@ -878,8 +879,7 @@ sub Start($) {
     {    # set up timer if automatically call
 
         RemoveInternalTimer($hash);
-        InternalTimer( gettimeofday() + $hash->{INTERVAL},
-            "UWZ_Start", $hash );
+        InternalTimer( gettimeofday() + $hash->{INTERVAL}, "UWZ_Start", $hash );
         return undef if ( IsDisabled($name) );
         readingsSingleUpdate( $hash, 'currentIntervalMode', 'normal', 0 );
     }
@@ -1738,8 +1738,8 @@ sub Run($) {
 
 #####################################
 sub UWZAsHtml($;$) {
-
     my ( $name, $items ) = @_;
+
     my $ret  = '';
     my $hash = $defs{$name};
 
@@ -1774,235 +1774,17 @@ sub UWZAsHtml($;$) {
                 $i--
               )
             {
+                $ret .= UWZHtmlFrame( $hash, "Warn_" . $i, $attr, 1 );
 
-                $ret .=
-'<tr><td class="uwzIcon" style="vertical-align:top;"><img src="'
-                  . ReadingsVal( $name, "Warn_" . $i . "_IconURL", "" )
-                  . '"></td>';
-                $ret .=
-                    '<td class="uwzValue"><b>'
-                  . ReadingsVal( $name, "Warn_" . $i . "_ShortText", "" )
-                  . '</b><br><br>';
-                $ret .= ReadingsVal( $name, "Warn_" . $i . "_LongText", "" )
-                  . '<br><br>';
-
-                my (
-                    $sec,  $min,  $hour, $mday, $mon,
-                    $year, $wday, $yday, $isdst
-                  )
-                  = localtime(
-                    ReadingsVal( $name, "Warn_" . $i . "_Start", "" ) );
-                if ( length($hour) == 1 ) { $hour = "0$hour"; }
-                if ( length($min) == 1 )  { $min  = "0$min"; }
-
-                # language by AttrVal
-                if ( $hash->{CountryCode} ~~ [ 'DE', 'AT', 'CH' ] ) {
-                    $ret .=
-                        '<table '
-                      . $attr
-                      . '><tr><th></th><th></th></tr><tr><td><b>Anfang:</b></td><td>'
-                      . "$DEweekdays[$wday], $mday $DEmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'Uhr</td>';
-                }
-                elsif ( $hash->{CountryCode} ~~ ['NL'] ) {
-                    $ret .=
-                        '<table '
-                      . $attr
-                      . '><tr><th></th><th></th></tr><tr><td><b>Begin:</b></td><td>'
-                      . "$NLweekdays[$wday], $mday $NLmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'uur</td>';
-                }
-                elsif ( $hash->{CountryCode} ~~ ['FR'] ) {
-                    $ret .=
-                        '<table '
-                      . $attr
-                      . '><tr><th></th><th></th></tr><tr><td><b>Valide à partir du:</b></td><td>'
-                      . "$FRweekdays[$wday], $mday $FRmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'heure</td>';
-                }
-                else {
-                    $ret .=
-                        '<table '
-                      . $attr
-                      . '><tr><th></th><th></th></tr><tr><td><b>Start:</b></td><td>'
-                      . "$ENweekdays[$wday], $mday $ENmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'hour</td>';
-                }
-
-                # end language by AttrVal
-
-                ( $sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst )
-                  = undef;
-                ( $sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst )
-                  = localtime(
-                    ReadingsVal( $name, "Warn_" . $i . "_End", "" ) );
-                if ( length($hour) == 1 ) { $hour = "0$hour"; }
-                if ( length($min) == 1 )  { $min  = "0$min"; }
-
-                # language by AttrVal
-                if ( $hash->{CountryCode} ~~ [ 'DE', 'AT', 'CH' ] ) {
-                    $ret .=
-                        '<td><b>Ende:</b></td><td>'
-                      . "$DEweekdays[$wday], $mday $DEmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'Uhr</td>';
-                }
-                elsif ( $hash->{CountryCode} ~~ ['NL'] ) {
-                    $ret .=
-                        '<td><b>Einde:</b></td><td>'
-                      . "$NLweekdays[$wday], $mday $NLmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'uur</td>';
-                }
-                elsif ( $hash->{CountryCode} ~~ ['FR'] ) {
-                    $ret .=
-                        '<td><b>Jusqu\'au:</b></td><td>'
-                      . "$FRweekdays[$wday], $mday $FRmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'heure</td>';
-                }
-                else {
-                    $ret .=
-                        '<td><b>End:</b></td><td>'
-                      . "$ENweekdays[$wday], $mday $ENmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'hour</td>';
-                }
-
-                # end language by AttrVal
-                $ret .= '</tr></table>';
-                $ret .= '</td></tr>';
             }
         }
         else {
-###
             for ( my $i = 0 ; $i < ReadingsVal( $name, "WarnCount", 0 ) ; $i++ )
             {
 
-                $ret .=
-'<tr><td class="uwzIcon" style="vertical-align:top;"><img src="'
-                  . ReadingsVal( $name, "Warn_" . $i . "_IconURL", "" )
-                  . '"></td>';
-                $ret .=
-                    '<td class="uwzValue"><b>'
-                  . ReadingsVal( $name, "Warn_" . $i . "_ShortText", "" )
-                  . '</b><br><br>';
-                $ret .= ReadingsVal( $name, "Warn_" . $i . "_LongText", "" )
-                  . '<br><br>';
-
-                my (
-                    $sec,  $min,  $hour, $mday, $mon,
-                    $year, $wday, $yday, $isdst
-                  )
-                  = localtime(
-                    ReadingsVal( $name, "Warn_" . $i . "_Start", "" ) );
-                if ( length($hour) == 1 ) { $hour = "0$hour"; }
-                if ( length($min) == 1 )  { $min  = "0$min"; }
-
-                # language by AttrVal
-                if ( $hash->{CountryCode} ~~ [ 'DE', 'AT', 'CH' ] ) {
-                    $ret .=
-                        '<table '
-                      . $attr
-                      . '><tr><th></th><th></th></tr><tr><td><b>Anfang:</b></td><td>'
-                      . "$DEweekdays[$wday], $mday $DEmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'Uhr</td>';
-                }
-                elsif ( $hash->{CountryCode} ~~ ['NL'] ) {
-                    $ret .=
-                        '<table '
-                      . $attr
-                      . '><tr><th></th><th></th></tr><tr><td><b>Begin:</b></td><td>'
-                      . "$NLweekdays[$wday], $mday $NLmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'uur</td>';
-                }
-                elsif ( $hash->{CountryCode} ~~ ['FR'] ) {
-                    $ret .=
-                        '<table '
-                      . $attr
-                      . '><tr><th></th><th></th></tr><tr><td><b>Valide à partir du:</b></td><td>'
-                      . "$FRweekdays[$wday], $mday $FRmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'heure</td>';
-                }
-                else {
-                    $ret .=
-                        '<table '
-                      . $attr
-                      . '><tr><th></th><th></th></tr><tr><td><b>Start:</b></td><td>'
-                      . "$ENweekdays[$wday], $mday $ENmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'hour</td>';
-                }
-
-                # end language by AttrVal
-
-                ( $sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst )
-                  = undef;
-                ( $sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst )
-                  = localtime(
-                    ReadingsVal( $name, "Warn_" . $i . "_End", "" ) );
-                if ( length($hour) == 1 ) { $hour = "0$hour"; }
-                if ( length($min) == 1 )  { $min  = "0$min"; }
-
-                # language by AttrVal
-                if ( $hash->{CountryCode} ~~ [ 'DE', 'AT', 'CH' ] ) {
-                    $ret .=
-                        '<td><b>Ende:</b></td><td>'
-                      . "$DEweekdays[$wday], $mday $DEmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'Uhr</td>';
-                }
-                elsif ( $hash->{CountryCode} ~~ ['NL'] ) {
-                    $ret .=
-                        '<td><b>Einde:</b></td><td>'
-                      . "$NLweekdays[$wday], $mday $NLmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'uur</td>';
-                }
-                elsif ( $hash->{CountryCode} ~~ ['FR'] ) {
-                    $ret .=
-                        '<td><b>Juzqu\'au:</b></td><td>'
-                      . "$FRweekdays[$wday], $mday $FRmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'heure</td>';
-                }
-                else {
-                    $ret .=
-                        '<td><b>End:</b></td><td>'
-                      . "$ENweekdays[$wday], $mday $ENmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'hour</td>';
-                }
-
-                # end language by AttrVal
-                $ret .= '</tr></table>';
-                $ret .= '</td></tr>';
+                $ret .= UWZHtmlFrame( $hash, "Warn_" . $i, $attr, 1 );
             }
         }
-###
 
         $ret .= '</table>';
         $ret .= '</td></tr>';
@@ -2046,8 +1828,8 @@ sub UWZAsHtml($;$) {
 
 #####################################
 sub UWZAsHtmlLite($;$) {
-
     my ( $name, $items ) = @_;
+
     my $ret            = '';
     my $hash           = $defs{$name};
     my $htmlsequence   = AttrVal( $name, "htmlsequence", "none" );
@@ -2081,226 +1863,14 @@ sub UWZAsHtmlLite($;$) {
                 $i--
               )
             {
-                $ret .=
-'<tr><td class="uwzIcon" style="vertical-align:top;"><img src="'
-                  . ReadingsVal( $name, "Warn_" . $i . "_IconURL", "" )
-                  . '"></td>';
-                $ret .=
-                    '<td class="uwzValue"><b>'
-                  . ReadingsVal( $name, "Warn_" . $i . "_ShortText", "" )
-                  . '</b><br><br>';
-
-                my (
-                    $sec,  $min,  $hour, $mday, $mon,
-                    $year, $wday, $yday, $isdst
-                  )
-                  = localtime(
-                    ReadingsVal( $name, "Warn_" . $i . "_Start", "" ) );
-                if ( length($hour) == 1 ) { $hour = "0$hour"; }
-                if ( length($min) == 1 )  { $min  = "0$min"; }
-
-                # language by AttrVal
-                if ( $hash->{CountryCode} ~~ [ 'DE', 'AT', 'CH' ] ) {
-                    $ret .=
-                        '<table '
-                      . $attr
-                      . '><tr><th></th><th></th></tr><tr><td><b>Anfang:</b></td><td>'
-                      . "$DEweekdays[$wday], $mday $DEmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'Uhr</td>';
-                }
-                elsif ( $hash->{CountryCode} ~~ ['NL'] ) {
-                    $ret .=
-                        '<table '
-                      . $attr
-                      . '><tr><th></th><th></th></tr><tr><td><b>Begin:</b></td><td>'
-                      . "$NLweekdays[$wday], $mday $NLmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'uur</td>';
-                }
-                elsif ( $hash->{CountryCode} ~~ ['FR'] ) {
-                    $ret .=
-                        '<table '
-                      . $attr
-                      . '><tr><th></th><th></th></tr><tr><td><b>Valide à partir du:</b></td><td>'
-                      . "$FRweekdays[$wday], $mday $FRmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'heure</td>';
-                }
-                else {
-                    $ret .=
-                        '<table '
-                      . $attr
-                      . '><tr><th></th><th></th></tr><tr><td><b>Start:</b></td><td>'
-                      . "$ENweekdays[$wday], $mday $ENmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'hour</td>';
-                }
-
-                # end language by AttrVal
-
-                ( $sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst )
-                  = undef;
-                ( $sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst )
-                  = localtime(
-                    ReadingsVal( $name, "Warn_" . $i . "_End", "" ) );
-                if ( length($hour) == 1 ) { $hour = "0$hour"; }
-                if ( length($min) == 1 )  { $min  = "0$min"; }
-
-                # language by AttrVal
-                if ( $hash->{CountryCode} ~~ [ 'DE', 'AT', 'CH' ] ) {
-                    $ret .=
-                        '<td><b>Ende:</b></td><td>'
-                      . "$DEweekdays[$wday], $mday $DEmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'Uhr</td>';
-                }
-                elsif ( $hash->{CountryCode} ~~ ['NL'] ) {
-                    $ret .=
-                        '<td><b>Einde:</b></td><td>'
-                      . "$NLweekdays[$wday], $mday $NLmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'uur</td>';
-                }
-                elsif ( $hash->{CountryCode} ~~ ['FR'] ) {
-                    $ret .=
-                        '<td><b>Jusqu\'au:</b></td><td>'
-                      . "$FRweekdays[$wday], $mday $FRmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'heure</td>';
-                }
-                else {
-                    $ret .=
-                        '<td><b>End:</b></td><td>'
-                      . "$ENweekdays[$wday], $mday $ENmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'hour</td>';
-                }
-
-                # end language by AttrVal
-                $ret .= '</tr></table>';
-                $ret .= '</td></tr>';
+                $ret .= UWZHtmlFrame( $hash, "Warn_" . $i, $attr, 0 );
             }
         }
         else {
             for ( my $i = 0 ;
                 $i < ReadingsVal( $name, "WarnCount", "" ) ; $i++ )
             {
-                $ret .=
-'<tr><td class="uwzIcon" style="vertical-align:top;"><img src="'
-                  . ReadingsVal( $name, "Warn_" . $i . "_IconURL", "" )
-                  . '"></td>';
-                $ret .=
-                    '<td class="uwzValue"><b>'
-                  . ReadingsVal( $name, "Warn_" . $i . "_ShortText", "" )
-                  . '</b><br><br>';
-
-                my (
-                    $sec,  $min,  $hour, $mday, $mon,
-                    $year, $wday, $yday, $isdst
-                  )
-                  = localtime(
-                    ReadingsVal( $name, "Warn_" . $i . "_Start", "" ) );
-                if ( length($hour) == 1 ) { $hour = "0$hour"; }
-                if ( length($min) == 1 )  { $min  = "0$min"; }
-
-                # language by AttrVal
-                if ( $hash->{CountryCode} ~~ [ 'DE', 'AT', 'CH' ] ) {
-                    $ret .=
-                        '<table '
-                      . $attr
-                      . '><tr><th></th><th></th></tr><tr><td><b>Anfang:</b></td><td>'
-                      . "$DEweekdays[$wday], $mday $DEmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'Uhr</td>';
-                }
-                elsif ( $hash->{CountryCode} ~~ ['NL'] ) {
-                    $ret .=
-                        '<table '
-                      . $attr
-                      . '><tr><th></th><th></th></tr><tr><td><b>Begin:</b></td><td>'
-                      . "$NLweekdays[$wday], $mday $NLmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'uur</td>';
-                }
-                elsif ( $hash->{CountryCode} ~~ ['FR'] ) {
-                    $ret .=
-                        '<table '
-                      . $attr
-                      . '><tr><th></th><th></th></tr><tr><td><b>Valide à partir du:</b></td><td>'
-                      . "$FRweekdays[$wday], $mday $FRmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'heure</td>';
-                }
-                else {
-                    $ret .=
-                        '<table '
-                      . $attr
-                      . '><tr><th></th><th></th></tr><tr><td><b>Start:</b></td><td>'
-                      . "$ENweekdays[$wday], $mday $ENmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'hour</td>';
-                }
-
-                # end language by AttrVal
-
-                ( $sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst )
-                  = undef;
-                ( $sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst )
-                  = localtime(
-                    ReadingsVal( $name, "Warn_" . $i . "_End", "" ) );
-                if ( length($hour) == 1 ) { $hour = "0$hour"; }
-                if ( length($min) == 1 )  { $min  = "0$min"; }
-
-                # language by AttrVal
-                if ( $hash->{CountryCode} ~~ [ 'DE', 'AT', 'CH' ] ) {
-                    $ret .=
-                        '<td><b>Ende:</b></td><td>'
-                      . "$DEweekdays[$wday], $mday $DEmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'Uhr</td>';
-                }
-                elsif ( $hash->{CountryCode} ~~ ['NL'] ) {
-                    $ret .=
-                        '<td><b>Einde:</b></td><td>'
-                      . "$NLweekdays[$wday], $mday $NLmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'uur</td>';
-                }
-                elsif ( $hash->{CountryCode} ~~ ['FR'] ) {
-                    $ret .=
-                        '<td><b>Jusqu\'au:</b></td><td>'
-                      . "$FRweekdays[$wday], $mday $FRmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'heure</td>';
-                }
-                else {
-                    $ret .=
-                        '<td><b>End:</b></td><td>'
-                      . "$ENweekdays[$wday], $mday $ENmonths[$mon] "
-                      . ( 1900 + $year )
-                      . " $hour:$min "
-                      . 'hour</td>';
-                }
-
-                # end language by AttrVal
-                $ret .= '</tr></table>';
-                $ret .= '</td></tr>';
+                $ret .= UWZHtmlFrame( $hash, "Warn_" . $i, $attr, 0 );
             }
         }
         $ret .= '</table>';
@@ -2345,8 +1915,8 @@ sub UWZAsHtmlLite($;$) {
 
 #####################################
 sub UWZAsHtmlFP($;$) {
-
     my ( $name, $items ) = @_;
+
     my $tablewidth = ReadingsVal( $name, "WarnCount", "" ) * 80;
     my $htmlsequence   = AttrVal( $name, "htmlsequence",   "none" );
     my $htmltitle      = AttrVal( $name, "htmltitle",      "" );
@@ -2393,8 +1963,8 @@ sub UWZAsHtmlFP($;$) {
 
 #####################################
 sub UWZAsHtmlMovie($$) {
-
     my ( $name, $land ) = @_;
+
     my $url = Map2Movie( $name, $land );
     my $hash = $defs{$name};
 
@@ -2435,8 +2005,8 @@ sub UWZAsHtmlMovie($$) {
 
 #####################################
 sub UWZAsHtmlKarteLand($$) {
-
     my ( $name, $land ) = @_;
+
     my $url = Map2Image( $name, $land );
     my $hash = $defs{$name};
 
@@ -2469,6 +2039,93 @@ sub UWZAsHtmlKarteLand($$) {
 
     $ret .= '</td></tr></table></td></tr>';
     $ret .= '</table>';
+
+    return $ret;
+}
+
+#####################################
+sub UWZHtmlFrame($$$) {
+    my ( $hash, $readingStart, $attr, $parm ) = @_;
+
+    my $ret  = "";
+    my $name = $hash->{NAME};
+    $ret .=
+        '<tr><td class="uwzIcon" style="vertical-align:top;"><img src="'
+      . ReadingsVal( $name, $readingStart . "_IconURL", "" )
+      . '"></td>';
+    $ret .=
+        '<td class="uwzValue"><b>'
+      . ReadingsVal( $name, $readingStart . "_ShortText", "" )
+      . '</b><br><br>';
+    $ret .= ReadingsVal( $name, $readingStart . "_LongText", "" ) . '<br><br>'
+      if ($parm);
+
+    $ret .= UWZHtmlTimestamp( $hash, $readingStart . "_Start", $attr );
+    $ret .= UWZHtmlTimestamp( $hash, $readingStart . "_End",   $attr );
+    $ret .= '</tr></table>';
+    $ret .= '</td></tr>';
+
+    return $ret;
+}
+
+#####################################
+sub UWZHtmlTimestamp($$$) {
+
+    my @DEText = qw(Anfang: Ende: Uhr);
+    my @NLText = qw(Begin: Einde: uur);
+    my @FRText = ( "Valide à partir du:", "Jusqu\'au:", "heure" );
+    my @ENText = qw(Start: End: hour);
+
+    my ( $hash, $reading, $attr ) = @_;
+
+    my $ret, my $StartEnd = "";
+    my $name = $hash->{NAME};
+
+    if ( substr( $reading, 7, 1 ) eq "S" ) {
+        $StartEnd = 0;
+        $ret .= '<table ' . $attr . '><tr><th></th><th></th></tr><tr>';
+    }
+    else { $StartEnd = 1; }
+
+    my ( $sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst ) =
+      localtime( ReadingsVal( $name, $reading, "" ) );
+
+    if ( length($hour) == 1 ) { $hour = "0$hour"; }
+    if ( length($min) == 1 )  { $min  = "0$min"; }
+
+    # language by AttrVal
+    if ( $hash->{CountryCode} ~~ [ 'DE', 'AT', 'CH' ] ) {
+        $ret .=
+            "<td><b>$DEText[$StartEnd]</b></td><td>"
+          . "$DEweekdays[$wday], $mday $DEmonths[$mon] "
+          . ( 1900 + $year )
+          . " $hour:$min "
+          . "$DEText[2]</td>";
+    }
+    elsif ( $hash->{CountryCode} ~~ ['NL'] ) {
+        $ret .=
+            "<td><b>$NLText[$StartEnd]</b></td><td>"
+          . "$NLweekdays[$wday], $mday $NLmonths[$mon] "
+          . ( 1900 + $year )
+          . " $hour:$min "
+          . "$NLText[2]</td>";
+    }
+    elsif ( $hash->{CountryCode} ~~ ['FR'] ) {
+        $ret .=
+            "<td><b>$FRText[$StartEnd]</b></td><td>"
+          . "$FRweekdays[$wday], $mday $FRmonths[$mon] "
+          . ( 1900 + $year )
+          . " $hour:$min "
+          . "$FRText[2]</td>";
+    }
+    else {
+        $ret .=
+            "<td><b>$ENText[$StartEnd]</b></td><td>"
+          . "$ENweekdays[$wday], $mday $ENmonths[$mon] "
+          . ( 1900 + $year )
+          . " $hour:$min "
+          . "$ENText[2]</td>";
+    }
 
     return $ret;
 }
@@ -3623,7 +3280,7 @@ sub UWZSearchAreaID($$) {
   ],
   "release_status": "stable",
   "license": "GPL_2",
-  "version": "v2.2.2",
+  "version": "v2.2.3",
   "author": [
     "Marko Oldenburg <leongaultier@gmail.com>"
   ],
