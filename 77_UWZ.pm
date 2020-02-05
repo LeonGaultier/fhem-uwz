@@ -863,8 +863,8 @@ sub JSONAcquire($$) {
         return "Error|Error " . $err;
     }
 
-    Log $hash, 4, length($data) . " characters captured:  $data";
-    return $data;
+    Log $hash, 4, length($data) . " characters captured:  main::encode_utf8($data)";
+    return main::encode_utf8($data);
 }
 
 #####################################
@@ -2963,7 +2963,7 @@ sub UWZSearchAreaID($$) {
       <br>
       <li><code>download</code>
          <br>
-         Download Unwetterkarten während des updates (0|1). 
+         Download Unwetterkarten während des updates (0|1).
          <br>
       </li>
       <li><code>savepath</code>
@@ -3280,7 +3280,7 @@ sub UWZSearchAreaID($$) {
   ],
   "release_status": "stable",
   "license": "GPL_2",
-  "version": "v2.2.3",
+  "version": "v2.2.4",
   "author": [
     "Marko Oldenburg <leongaultier@gmail.com>"
   ],
