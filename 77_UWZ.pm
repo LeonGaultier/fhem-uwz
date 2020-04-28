@@ -898,7 +898,7 @@ sub JSONAcquire {
         my $err_log = "Can't get $URL -- " . $err;
         readingsSingleUpdate( $hash, 'lastConnection', $err, 1 );
         Log $hash, 1, 'Error: ' . $err_log;
-        return main::encode_utf8('{"Error": "' . $err . '"}');
+        return main::encode_utf8( '{"Error": "' . $err . '"}' );
     }
 
     Log $hash, 4,
@@ -920,7 +920,7 @@ sub Start {
         RemoveInternalTimer($hash);
         InternalTimer( gettimeofday() + $hash->{INTERVAL}, 'UWZ_Start', $hash );
 
-        return readingsSingleUpdate($hash,'state','disabled',1)
+        return readingsSingleUpdate( $hash, 'state', 'disabled', 1 )
           if ( IsDisabled($name) );
 
         readingsSingleUpdate( $hash, 'currentIntervalMode', 'normal', 0 );
@@ -999,7 +999,8 @@ sub Done {
 
     if ( defined $values{Error} ) {
         readingsBulkUpdate( $hash, 'lastConnection', $values{Error} );
-        readingsBulkUpdate( $hash, 'state', 'error at last run, please check >>lastConnection<< reading' );
+        readingsBulkUpdate( $hash, 'state',
+            'error at last run, please check >>lastConnection<< reading' );
     }
     else {
 
@@ -1153,28 +1154,13 @@ sub Run {
     Log $hash, 5, length($response) . ' characters captured';
 
     my $uwz_warnings = JSON->new->ascii->decode($response);
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+
     my $message;
     my $uwz_warncount;
-    
+
     if ( !exists $uwz_warnings->{Error} ) {
-        my $enc          = guess_encoding($uwz_warnings);
-        
+        my $enc = guess_encoding($uwz_warnings);
+
         Log $hash, 2, 'DEBUG!!! Response: ' . $uwz_warnings;
 
         $uwz_warncount = scalar( @{ $uwz_warnings->{'results'} } );
@@ -1184,23 +1170,23 @@ sub Run {
 
         if ( $sortby eq 'creation' ) {
             Log $hash, 4, 'Sorting by creation';
-            @sorted = sort { $b->{payload}{creation} <=> $a->{payload}{creation} }
-            @{ $uwz_warnings->{'results'} };
+            @sorted =
+              sort { $b->{payload}{creation} <=> $a->{payload}{creation} }
+              @{ $uwz_warnings->{'results'} };
 
         }
         elsif ( $sortby ne 'severity' ) {
             Log $hash, 4, 'Sorting by dtgStart';
             @sorted = sort { $a->{dtgStart} <=> $b->{dtgStart} }
-            @{ $uwz_warnings->{'results'} };
+              @{ $uwz_warnings->{'results'} };
 
         }
         else {
             Log $hash, 4, 'Sorting by severity';
             @sorted = sort { $a->{severity} <=> $b->{severity} }
-            @{ $uwz_warnings->{'results'} };
+              @{ $uwz_warnings->{'results'} };
         }
 
-        
         my $i = 0;
 
         my %typenames = (
@@ -1293,126 +1279,137 @@ sub Run {
         foreach my $single_warning (@sorted) {
 
             push @uwzmaxlevel,
-            GetUWZLevel( $hash, $single_warning->{'payload'}{'levelName'} );
+              GetUWZLevel( $hash, $single_warning->{'payload'}{'levelName'} );
 
             Log $hash, 4,
-            'Warn_' . $i . '_EventID: ' . $single_warning->{'payload'}{'id'};
+              'Warn_' . $i . '_EventID: ' . $single_warning->{'payload'}{'id'};
             $message .=
-            'Warn_' . $i . '_EventID|' . $single_warning->{'payload'}{'id'} . '|';
+                'Warn_'
+              . $i
+              . '_EventID|'
+              . $single_warning->{'payload'}{'id'} . '|';
 
             my $chopcreation =
-            substr( $single_warning->{'payload'}{'creation'}, 0, 10 );
+              substr( $single_warning->{'payload'}{'creation'}, 0, 10 );
             $chopcreation = $chopcreation;
 
             Log $hash, 4, 'Warn_' . $i . '_Creation: ' . $chopcreation;
             $message .= 'Warn_' . $i . '_Creation|' . $chopcreation . '|';
 
             Log $hash, 4, 'Warn_' . $i . '_Type: ' . $single_warning->{'type'};
-            $message .= 'Warn_' . $i . '_Type|' . $single_warning->{'type'} . '|';
+            $message .=
+              'Warn_' . $i . '_Type|' . $single_warning->{'type'} . '|';
 
             Log $hash, 4,
                 'Warn_'
-            . $i
-            . '_uwzLevel: '
-            . GetUWZLevel( $hash, $single_warning->{'payload'}{'levelName'} );
+              . $i
+              . '_uwzLevel: '
+              . GetUWZLevel( $hash, $single_warning->{'payload'}{'levelName'} );
             $message .= 'Warn_'
-            . $i
-            . '_uwzLevel|'
-            . GetUWZLevel( $hash, $single_warning->{'payload'}{'levelName'} )
-            . '|';
+              . $i
+              . '_uwzLevel|'
+              . GetUWZLevel( $hash, $single_warning->{'payload'}{'levelName'} )
+              . '|';
 
             Log $hash, 4,
-            'Warn_' . $i . '_Severity: ' . $single_warning->{'severity'};
+              'Warn_' . $i . '_Severity: ' . $single_warning->{'severity'};
             $message .=
-            'Warn_' . $i . '_Severity|' . $single_warning->{'severity'} . '|';
+              'Warn_' . $i . '_Severity|' . $single_warning->{'severity'} . '|';
 
-            Log $hash, 4, 'Warn_' . $i . '_Start: ' . $single_warning->{'dtgStart'};
+            Log $hash, 4,
+              'Warn_' . $i . '_Start: ' . $single_warning->{'dtgStart'};
             $message .=
-            'Warn_' . $i . '_Start|' . $single_warning->{'dtgStart'} . '|';
+              'Warn_' . $i . '_Start|' . $single_warning->{'dtgStart'} . '|';
 
             Log $hash, 4, 'Warn_' . $i . '_End: ' . $single_warning->{'dtgEnd'};
-            $message .= 'Warn_' . $i . '_End|' . $single_warning->{'dtgEnd'} . '|';
+            $message .=
+              'Warn_' . $i . '_End|' . $single_warning->{'dtgEnd'} . '|';
 
             ## Begin of redundant Reading
             if ( $UWZ_humanreadable eq 1 ) {
                 Log $hash, 4,
                     'Warn_'
-                . $i
-                . '_Start_Date: '
-                . strftime( "%d.%m.%Y",
+                  . $i
+                  . '_Start_Date: '
+                  . strftime( "%d.%m.%Y",
                     localtime( $single_warning->{'dtgStart'} ) );
                 $message .= 'Warn_'
-                . $i
-                . '_Start_Date|'
-                . strftime( "%d.%m.%Y",
+                  . $i
+                  . '_Start_Date|'
+                  . strftime( "%d.%m.%Y",
                     localtime( $single_warning->{'dtgStart'} ) )
-                . '|';
+                  . '|';
 
                 Log $hash, 4,
                     'Warn_'
-                . $i
-                . '_Start_Time: '
-                . strftime( "%H:%M", localtime( $single_warning->{'dtgStart'} ) );
+                  . $i
+                  . '_Start_Time: '
+                  . strftime( "%H:%M",
+                    localtime( $single_warning->{'dtgStart'} ) );
                 $message .= 'Warn_'
-                . $i
-                . '_Start_Time|'
-                . strftime( "%H:%M", localtime( $single_warning->{'dtgStart'} ) )
-                . '|';
+                  . $i
+                  . '_Start_Time|'
+                  . strftime( "%H:%M",
+                    localtime( $single_warning->{'dtgStart'} ) )
+                  . '|';
 
                 Log $hash, 4,
                     'Warn_'
-                . $i
-                . '_End_Date: '
-                . strftime( "%d.%m.%Y",
+                  . $i
+                  . '_End_Date: '
+                  . strftime( "%d.%m.%Y",
                     localtime( $single_warning->{'dtgEnd'} ) );
                 $message .= 'Warn_'
-                . $i
-                . '_End_Date|'
-                . strftime( "%d.%m.%Y", localtime( $single_warning->{'dtgEnd'} ) )
-                . '|';
+                  . $i
+                  . '_End_Date|'
+                  . strftime( "%d.%m.%Y",
+                    localtime( $single_warning->{'dtgEnd'} ) )
+                  . '|';
 
                 Log $hash, 4,
                     'Warn_'
-                . $i
-                . '_End_Time: '
-                . strftime( "%H:%M", localtime( $single_warning->{'dtgEnd'} ) );
+                  . $i
+                  . '_End_Time: '
+                  . strftime( "%H:%M",
+                    localtime( $single_warning->{'dtgEnd'} ) );
                 $message .= 'Warn_'
-                . $i
-                . '_End_Time|'
-                . strftime( "%H:%M", localtime( $single_warning->{'dtgEnd'} ) )
-                . '|';
+                  . $i
+                  . '_End_Time|'
+                  . strftime( "%H:%M",
+                    localtime( $single_warning->{'dtgEnd'} ) )
+                  . '|';
 
                 Log $hash, 4,
                     'Warn_'
-                . $i
-                . '_Creation_Date: '
-                . strftime( "%d.%m.%Y", localtime($chopcreation) );
+                  . $i
+                  . '_Creation_Date: '
+                  . strftime( "%d.%m.%Y", localtime($chopcreation) );
                 $message .= 'Warn_'
-                . $i
-                . '_Creation_Date|'
-                . strftime( "%d.%m.%Y", localtime($chopcreation) ) . '|';
+                  . $i
+                  . '_Creation_Date|'
+                  . strftime( "%d.%m.%Y", localtime($chopcreation) ) . '|';
 
                 Log $hash, 4,
                     'Warn_'
-                . $i
-                . '_Creation_Time: '
-                . strftime( "%H:%M", localtime($chopcreation) );
+                  . $i
+                  . '_Creation_Time: '
+                  . strftime( "%H:%M", localtime($chopcreation) );
                 $message .= 'Warn_'
-                . $i
-                . '_Creation_Time|'
-                . strftime( "%H:%M", localtime($chopcreation) ) . '|';
+                  . $i
+                  . '_Creation_Time|'
+                  . strftime( "%H:%M", localtime($chopcreation) ) . '|';
 
                 # Begin Language by AttrVal
                 if ( $hash->{CountryCode} ~~ [ 'DE', 'AT', 'CH' ] ) {
                     Log $hash, 4,
                         'Warn_'
-                    . $i
-                    . '_Type_Str: '
-                    . $typenames_de_str{ $single_warning->{'type'} };
+                      . $i
+                      . '_Type_Str: '
+                      . $typenames_de_str{ $single_warning->{'type'} };
                     $message .= 'Warn_'
-                    . $i
-                    . '_Type_Str|'
-                    . $typenames_de_str{ $single_warning->{'type'} } . '|';
+                      . $i
+                      . '_Type_Str|'
+                      . $typenames_de_str{ $single_warning->{'type'} } . '|';
                     my %uwzlevelname = (
                         '0' => 'Stufe Grün (keine Warnung)',
                         '1' => 'Stufe Dunkelgrün (Wetterhinweise)',
@@ -1423,71 +1420,71 @@ sub Run {
                     );
                     Log $hash, 4,
                         'Warn_'
-                    . $i
-                    . '_uwzLevel_Str: '
-                    . $uwzlevelname{
+                      . $i
+                      . '_uwzLevel_Str: '
+                      . $uwzlevelname{
                         GetUWZLevel( $hash,
                             $single_warning->{'payload'}{'levelName'} )
-                    };
+                      };
                     $message .= 'Warn_'
-                    . $i
-                    . '_uwzLevel_Str|'
-                    . $uwzlevelname{
+                      . $i
+                      . '_uwzLevel_Str|'
+                      . $uwzlevelname{
                         GetUWZLevel( $hash,
                             $single_warning->{'payload'}{'levelName'} )
-                    }
-                    . '|';
+                      }
+                      . '|';
 
                 }
                 elsif ( $hash->{CountryCode} ~~ ['NL'] ) {
                     Log $hash, 4,
                         'Warn_'
-                    . $i
-                    . '_Type_Str: '
-                    . $typenames_nl_str{ $single_warning->{'type'} };
+                      . $i
+                      . '_Type_Str: '
+                      . $typenames_nl_str{ $single_warning->{'type'} };
                     $message .= 'Warn_'
-                    . $i
-                    . '_Type_Str|'
-                    . $typenames_nl_str{ $single_warning->{'type'} } . '|';
+                      . $i
+                      . '_Type_Str|'
+                      . $typenames_nl_str{ $single_warning->{'type'} } . '|';
                     my %uwzlevelname = (
                         '0' => 'niveau groen (geen waarschuwingen)',
                         '1' => 'niveau donkergroen (weermelding)',
                         '2' => 'niveau geel (voorwaarschuwing)',
                         '3' =>
-    'waarschuwingsniveau oranje (waarschuwing voor matig noodweer)',
+'waarschuwingsniveau oranje (waarschuwing voor matig noodweer)',
                         '4' =>
-    'waarschuwingsniveau rood (waarschuwing voor zwaar noodweer)',
+'waarschuwingsniveau rood (waarschuwing voor zwaar noodweer)',
                         '5' =>
-    'waarschuwingsniveau violet (waarschuwing voor zeer zwaar noodweer)'
+'waarschuwingsniveau violet (waarschuwing voor zeer zwaar noodweer)'
                     );
                     Log $hash, 4,
                         'Warn_'
-                    . $i
-                    . '_uwzLevel_Str: '
-                    . $uwzlevelname{
+                      . $i
+                      . '_uwzLevel_Str: '
+                      . $uwzlevelname{
                         GetUWZLevel( $hash,
                             $single_warning->{'payload'}{'levelName'} )
-                    };
+                      };
                     $message .= 'Warn_'
-                    . $i
-                    . '_uwzLevel_Str|'
-                    . $uwzlevelname{
+                      . $i
+                      . '_uwzLevel_Str|'
+                      . $uwzlevelname{
                         GetUWZLevel( $hash,
                             $single_warning->{'payload'}{'levelName'} )
-                    }
-                    . '|';
+                      }
+                      . '|';
 
                 }
                 elsif ( $hash->{CountryCode} ~~ ['FR'] ) {
                     Log $hash, 4,
                         'Warn_'
-                    . $i
-                    . '_Type_Str: '
-                    . $typenames_nl_str{ $single_warning->{'type'} };
+                      . $i
+                      . '_Type_Str: '
+                      . $typenames_nl_str{ $single_warning->{'type'} };
                     $message .= 'Warn_'
-                    . $i
-                    . '_Type_Str|'
-                    . $typenames_nl_str{ $single_warning->{'type'} } . '|';
+                      . $i
+                      . '_Type_Str|'
+                      . $typenames_nl_str{ $single_warning->{'type'} } . '|';
                     my %uwzlevelname = (
                         '0' => 'niveau vert (aucune alerte)',
                         '1' => 'niveau vert foncé (indication météo)',
@@ -1498,32 +1495,32 @@ sub Run {
                     );
                     Log $hash, 4,
                         'Warn_'
-                    . $i
-                    . '_uwzLevel_Str: '
-                    . $uwzlevelname{
+                      . $i
+                      . '_uwzLevel_Str: '
+                      . $uwzlevelname{
                         GetUWZLevel( $hash,
                             $single_warning->{'payload'}{'levelName'} )
-                    };
+                      };
                     $message .= 'Warn_'
-                    . $i
-                    . '_uwzLevel_Str|'
-                    . $uwzlevelname{
+                      . $i
+                      . '_uwzLevel_Str|'
+                      . $uwzlevelname{
                         GetUWZLevel( $hash,
                             $single_warning->{'payload'}{'levelName'} )
-                    }
-                    . '|';
+                      }
+                      . '|';
 
                 }
                 else {
                     Log $hash, 4,
                         'Warn_'
-                    . $i
-                    . '_Type_Str: '
-                    . $typenames_en_str{ $single_warning->{'type'} };
+                      . $i
+                      . '_Type_Str: '
+                      . $typenames_en_str{ $single_warning->{'type'} };
                     $message .= 'Warn_'
-                    . $i
-                    . '_Type_Str|'
-                    . $typenames_en_str{ $single_warning->{'type'} } . '|';
+                      . $i
+                      . '_Type_Str|'
+                      . $typenames_en_str{ $single_warning->{'type'} } . '|';
                     my %uwzlevelname = (
                         '0' => 'level green (no warnings)',
                         '1' => 'level dark green (weather notice)',
@@ -1534,20 +1531,20 @@ sub Run {
                     );
                     Log $hash, 4,
                         'Warn_'
-                    . $i
-                    . '_uwzLevel_Str: '
-                    . $uwzlevelname{
+                      . $i
+                      . '_uwzLevel_Str: '
+                      . $uwzlevelname{
                         GetUWZLevel( $hash,
                             $single_warning->{'payload'}{'levelName'} )
-                    };
+                      };
                     $message .= 'Warn_'
-                    . $i
-                    . '_uwzLevel_Str|'
-                    . $uwzlevelname{
+                      . $i
+                      . '_uwzLevel_Str|'
+                      . $uwzlevelname{
                         GetUWZLevel( $hash,
                             $single_warning->{'payload'}{'levelName'} )
-                    }
-                    . '|';
+                      }
+                      . '|';
 
                 }
 
@@ -1556,39 +1553,39 @@ sub Run {
 
             Log $hash, 4,
                 'Warn_'
-            . $i
-            . '_levelName: '
-            . $single_warning->{'payload'}{'levelName'};
+              . $i
+              . '_levelName: '
+              . $single_warning->{'payload'}{'levelName'};
             $message .= 'Warn_'
-            . $i
-            . '_levelName|'
-            . $single_warning->{'payload'}{'levelName'} . '|';
+              . $i
+              . '_levelName|'
+              . $single_warning->{'payload'}{'levelName'} . '|';
 
             Log $hash, 4,
                 'Warn_'
-            . $i
-            . '_AltitudeMin: '
-            . $enc->decode( $single_warning->{'payload'}{'altMin'} );
+              . $i
+              . '_AltitudeMin: '
+              . $enc->decode( $single_warning->{'payload'}{'altMin'} );
 
             $message .= 'Warn_'
-            . $i
-            . '_AltitudeMin|'
-            . encode( 'UTF-8',
+              . $i
+              . '_AltitudeMin|'
+              . encode( 'UTF-8',
                 decode( 'iso-8859-1', $single_warning->{'payload'}{'altMin'} ) )
-            . '|';
+              . '|';
 
             Log $hash, 4,
                 'Warn_'
-            . $i
-            . '_AltitudeMax: '
-            . $enc->decode( $single_warning->{'payload'}{'altMax'} );
+              . $i
+              . '_AltitudeMax: '
+              . $enc->decode( $single_warning->{'payload'}{'altMax'} );
 
             $message .= 'Warn_'
-            . $i
-            . '_AltitudeMax|'
-            . encode( 'UTF-8',
+              . $i
+              . '_AltitudeMax|'
+              . encode( 'UTF-8',
                 decode( 'iso-8859-1', $single_warning->{'payload'}{'altMax'} ) )
-            . '|';
+              . '|';
 
             my $uclang = 'EN';
             if ( AttrVal( $name, 'lang', undef ) ) {
@@ -1611,77 +1608,84 @@ sub Run {
             }
             Log $hash, 4,
                 'Warn_'
-            . $i
-            . '_LongText: '
-            . $enc->decode(
+              . $i
+              . '_LongText: '
+              . $enc->decode(
                 $single_warning->{'payload'}{'translationsLongText'}{$uclang} );
 
             $message .= 'Warn_'
-            . $i
-            . '_LongText|'
-            . encode(
+              . $i
+              . '_LongText|'
+              . encode(
                 'UTF-8',
                 decode(
                     'iso-8859-1',
-                    $single_warning->{'payload'}{'translationsLongText'}{$uclang}
+                    $single_warning->{'payload'}{'translationsLongText'}
+                      {$uclang}
                 )
-            ) . '|';
+              ) . '|';
 
             Log $hash, 4,
                 'Warn_'
-            . $i
-            . '_ShortText: '
-            . $enc->decode(
-                $single_warning->{'payload'}{'translationsShortText'}{$uclang} );
+              . $i
+              . '_ShortText: '
+              . $enc->decode(
+                $single_warning->{'payload'}{'translationsShortText'}{$uclang}
+              );
 
             $message .= 'Warn_'
-            . $i
-            . '_ShortText|'
-            . encode(
+              . $i
+              . '_ShortText|'
+              . encode(
                 'UTF-8',
                 decode(
                     'iso-8859-1',
-                    $single_warning->{'payload'}{'translationsShortText'}{$uclang}
+                    $single_warning->{'payload'}{'translationsShortText'}
+                      {$uclang}
                 )
-            ) . '|';
+              ) . '|';
 
-    ###
+            ###
             if ( AttrVal( $name, 'localiconbase', undef ) ) {
                 Log $hash, 4,
                     'Warn_'
-                . $i
-                . '_IconURL: '
-                . AttrVal( $name, 'localiconbase', undef )
-                . $typenames{ $single_warning->{'type'} } . '-'
-                . $single_warning->{'severity'} . '.png';
+                  . $i
+                  . '_IconURL: '
+                  . AttrVal( $name, 'localiconbase', undef )
+                  . $typenames{ $single_warning->{'type'} } . '-'
+                  . $single_warning->{'severity'} . '.png';
                 $message .= 'Warn_'
-                . $i
-                . '_IconURL|'
-                . AttrVal( $name, 'localiconbase', undef )
-                . $typenames{ $single_warning->{'type'} } . '-'
-                . GetSeverityColor(
+                  . $i
+                  . '_IconURL|'
+                  . AttrVal( $name, 'localiconbase', undef )
+                  . $typenames{ $single_warning->{'type'} } . '-'
+                  . GetSeverityColor(
                     $hash,
-                    GetUWZLevel( $hash, $single_warning->{'payload'}{'levelName'} )
-                ) . '.png|';
+                    GetUWZLevel(
+                        $hash, $single_warning->{'payload'}{'levelName'}
+                    )
+                  ) . '.png|';
 
             }
             else {
                 Log $hash, 4,
                     'Warn_'
-                . $i
-                . '_IconURL: http://www.unwetterzentrale.de/images/icons/'
-                . $typenames{ $single_warning->{'type'} } . '-'
-                . $single_warning->{'severity'} . '.gif';
+                  . $i
+                  . '_IconURL: http://www.unwetterzentrale.de/images/icons/'
+                  . $typenames{ $single_warning->{'type'} } . '-'
+                  . $single_warning->{'severity'} . '.gif';
                 $message .= 'Warn_'
-                . $i
-                . '_IconURL|http://www.unwetterzentrale.de/images/icons/'
-                . $typenames{ $single_warning->{'type'} } . '-'
-                . GetSeverityColor(
+                  . $i
+                  . '_IconURL|http://www.unwetterzentrale.de/images/icons/'
+                  . $typenames{ $single_warning->{'type'} } . '-'
+                  . GetSeverityColor(
                     $hash,
-                    GetUWZLevel( $hash, $single_warning->{'payload'}{'levelName'} )
-                ) . '.gif|';
+                    GetUWZLevel(
+                        $hash, $single_warning->{'payload'}{'levelName'}
+                    )
+                  ) . '.gif|';
             }
-    ###
+            ###
 
             ## Hagel start
             my $hagelcount = 0;
@@ -1691,29 +1695,29 @@ sub Run {
             if ( $hash->{CountryCode} ~~ [ 'DE', 'AT', 'CH' ] ) {
 
                 $hagelcount = my @hagelmatch =
-                $single_warning->{'payload'}{'translationsLongText'}{'DE'} =~
-                /Hagel/g;
+                  $single_warning->{'payload'}{'translationsLongText'}{'DE'} =~
+                  /Hagel/g;
 
             }
             elsif ( $hash->{CountryCode} ~~ ['NL'] ) {
 
                 $hagelcount = my @hagelmatch =
-                $single_warning->{'payload'}{'translationsLongText'}{'NL'} =~
-                /hagel/g;
+                  $single_warning->{'payload'}{'translationsLongText'}{'NL'} =~
+                  /hagel/g;
 
             }
             elsif ( $hash->{CountryCode} ~~ ['FR'] ) {
 
                 $hagelcount = my @hagelmatch =
-                $single_warning->{'payload'}{'translationsLongText'}{'FR'} =~
-                /grêle/g;
+                  $single_warning->{'payload'}{'translationsLongText'}{'FR'} =~
+                  /grêle/g;
 
             }
             else {
 
                 $hagelcount = my @hagelmatch =
-                $single_warning->{'payload'}{'translationsLongText'}{'EN'} =~
-                /Hail/g;
+                  $single_warning->{'payload'}{'translationsLongText'}{'EN'} =~
+                  /Hail/g;
             }
 
             # end language by AttrVal
@@ -1742,7 +1746,8 @@ sub Run {
         $message .= $max . '|';
 
         Log $hash, 4, 'WarnUWZLevel_Color: ' . GetSeverityColor( $hash, $max );
-        $message .= 'WarnUWZLevel_Color|' . GetSeverityColor( $hash, $max ) . '|';
+        $message .=
+          'WarnUWZLevel_Color|' . GetSeverityColor( $hash, $max ) . '|';
 
         ## Begin of redundant Reading
         if ( $UWZ_humanreadable eq 1 ) {
@@ -1765,11 +1770,11 @@ sub Run {
                     '1' => 'niveau donkergroen (voorwaarschuwing)',
                     '2' => 'niveau geel (voorwaarschuwing)',
                     '3' =>
-    'waarschuwingsniveau oranje (waarschuwing voor matig noodweer)',
+'waarschuwingsniveau oranje (waarschuwing voor matig noodweer)',
                     '4' =>
-                    'waarschuwingsniveau rood (waarschuwing voor zwaar noodweer)',
+'waarschuwingsniveau rood (waarschuwing voor zwaar noodweer)',
                     '5' =>
-    'waarschuwingsniveau violet (waarschuwing voor zeer zwaar noodweer)'
+'waarschuwingsniveau violet (waarschuwing voor zeer zwaar noodweer)'
                 );
                 Log $hash, 4, 'WarnUWZLevel_Str: ' . $uwzlevelname{$max};
                 $message .= 'WarnUWZLevel_Str|' . $uwzlevelname{$max} . '|';
@@ -1806,11 +1811,12 @@ sub Run {
         $message .= sprintf "%.2f", time() - $readingStartTime;
 
         Log $hash, 3, 'Done fetching data';
-        Log $hash, 4, 'Will return : ' . "$name|$message|WarnCount|$uwz_warncount";
+        Log $hash, 4,
+          'Will return : ' . "$name|$message|WarnCount|$uwz_warncount";
     }
     else {
-        $message        = 'Error|' . $uwz_warnings->{Error};
-        $uwz_warncount  = -1;
+        $message       = 'Error|' . $uwz_warnings->{Error};
+        $uwz_warncount = -1;
     }
 
     return "$name|$message|WarnCount|$uwz_warncount";
@@ -3374,7 +3380,7 @@ sub UWZSearchAreaID {
   ],
   "release_status": "stable",
   "license": "GPL_2",
-  "version": "v2.2.5",
+  "version": "v3.0.0",
   "author": [
     "Marko Oldenburg <leongaultier@gmail.com>"
   ],
