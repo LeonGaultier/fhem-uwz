@@ -768,10 +768,10 @@ sub Get {
     elsif ( ( lc $hash->{CountryCode} ) eq 'search' ) {
         my $usage = "Unknown argument $cmd, choose one of SearchAreaID ";
 
-        return $usage if ( scalar( @{$a} ) < 3 );
+        return $usage if ( scalar( @{$a} ) != 1 );
 
-        if ( $a->[0] =~ /^SearchAreaID/ ) { UWZSearchLatLon( $name, $a->[0] ); }
-        elsif ( $a->[0] =~ /^AreaID/ ) {
+        if ( $cmd =~ m{\ASearchAreaID}xms ) { UWZSearchLatLon( $name, $a->[0] ); }
+        elsif ( $cmd =~ m{\AAreaID}xms ) {
             my @splitparam = split( /,/, $a->[0] );
             UWZSearchAreaID( $splitparam[0], $splitparam[1] );
         }
@@ -798,8 +798,6 @@ sub Get {
           : $cmd =~ m{\Ahail}xms          ? GetCurrentHail($hash)
           :                                 $usage;
     }
-
-    return;
 }
 
 #####################################
@@ -2347,7 +2345,7 @@ sub UWZSearchLatLon {
     my $uwzxmlparser = XML::Simple->new();
     my $search       = $uwzxmlparser->XMLin(
         $response->content,
-        KeyAttr    => { city => 'id' },
+        KeyAttr    => { 'city' => 'id' },
         ForceArray => ['city']
     );
 
@@ -2376,19 +2374,16 @@ sub UWZSearchLatLon {
             $ret .= '<td>' . $value->{'latitude'} . '</td>';
             $ret .= '<td>' . $value->{'longitude'} . '</td>';
 
-            my @headerHost = grep /Host/, @FW_httpheader;
-            $headerHost[0] =~ s/Host: //g;
-
             my $aHref =
-                '<a href=\'http://'
-              . $headerHost[0]
-              . '/fhem?cmd=get+'
+                '<a href="/fhem?cmd=get%20'
               . $name
-              . '+AreaID+'
-              . $value->{'latitude'} . ','
+              . '%20AreaID%20'
+              . $value->{'latitude'}
+              . ','
               . $value->{'longitude'}
               . $::FW_CSRF
-              . '\'>Get AreaID</a>';
+              . '">Get AreaID</a>';
+
             $ret .= '<td>' . $aHref . '</td>';
             $ret .= '</tr>';
             $linecount++;
